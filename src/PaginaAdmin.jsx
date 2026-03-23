@@ -1,9 +1,10 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
-  loadBurgers, saveBurgers, loadGuarniciones, saveGuarniciones,
-  loadExtras, saveExtras, loadBebidas, saveBebidas,
-  loadFoto, saveFoto, deleteFoto, comprimirImagen,
-  loadZona, saveZona, fmt,
+  BURGERS_DEFAULT, GUARNICIONES_DEFAULT, EXTRAS_DEFAULT, BEBIDAS_DEFAULT,
+  subscribeMenu, saveMenuFirestore,
+  uploadFoto, deleteFotoStorage, getFotoURL, getFotoCached, setFotoCache, clearFotoCache,
+  saveZonaFirestore, subscribeZona,
+  comprimirImagen, fmt,
 } from "./datos.js";
 
 const ADMIN_PASS = "RosesBurgers2025";
@@ -11,19 +12,19 @@ const LS_SESSION = "rb-admin-session";
 
 // ── Estilos ────────────────────────────────────────────────────────
 const G = {
-  page:   { minHeight: "100vh", background: "#f4f7f5", fontFamily: "'Segoe UI', sans-serif" },
-  header: { background: "#1a3a25", color: "#fff", padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" },
-  title:  { fontSize: 20, fontWeight: 900, color: "#a8e6bc" },
-  card:   { background: "#fff", border: "1px solid #d0e8d8", borderRadius: 12, padding: "14px 16px", marginBottom: 10 },
-  input:  { border: "1px solid #ccc", borderRadius: 8, padding: "8px 10px", fontSize: 13, outline: "none", boxSizing: "border-box" },
-  btn: (bg = "#1a7a3a", txt = "#fff") => ({ background: bg, color: txt, border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontWeight: 700, fontSize: 12, whiteSpace: "nowrap" }),
-  tab: (a) => ({ padding: "9px 18px", borderRadius: 8, border: "1px solid", borderColor: a ? "#1a7a3a" : "#ccc", background: a ? "#1a7a3a" : "#fff", color: a ? "#fff" : "#555", fontWeight: 700, fontSize: 13, cursor: "pointer" }),
+  page:  { minHeight: "100vh", background: "#f4f7f5", fontFamily: "'Segoe UI', sans-serif" },
+  header:{ background: "#1a3a25", color: "#fff", padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" },
+  title: { fontSize: 20, fontWeight: 900, color: "#a8e6bc" },
+  card:  { background: "#fff", border: "1px solid #d0e8d8", borderRadius: 12, padding: "14px 16px", marginBottom: 10 },
+  input: { border: "1px solid #ccc", borderRadius: 8, padding: "8px 10px", fontSize: 13, outline: "none", boxSizing: "border-box" },
+  btn:   (bg = "#1a7a3a", txt = "#fff") => ({ background: bg, color: txt, border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontWeight: 700, fontSize: 12, whiteSpace: "nowrap" }),
+  tab:   (a) => ({ padding: "9px 18px", borderRadius: 8, border: "1px solid", borderColor: a ? "#1a7a3a" : "#ccc", background: a ? "#1a7a3a" : "#fff", color: a ? "#fff" : "#555", fontWeight: 700, fontSize: 13, cursor: "pointer" }),
 };
 
 // ── Login ──────────────────────────────────────────────────────────
 function Login({ onLogin }) {
   const [pass, setPass] = useState("");
-  const [err, setErr] = useState(false);
+  const [err, setErr]   = useState(false);
   function intentar() {
     if (pass === ADMIN_PASS) { localStorage.setItem(LS_SESSION, "1"); onLogin(); }
     else { setErr(true); setTimeout(() => setErr(false), 2000); }
@@ -43,61 +44,79 @@ function Login({ onLogin }) {
   );
 }
 
-// ── Upload de foto ─────────────────────────────────────────────────
+// ── Upload de foto con Firebase Storage ───────────────────────────
 function FotoUpload({ tipo, id }) {
-  const [foto, setFoto] = useState(() => loadFoto(tipo, id));
-  const ref = useRef(null);
+  const [url, setUrl]       = useState(() => getFotoCached(tipo, id));
+  const [cargando, setCarg] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (url) return;
+    getFotoURL(tipo, id).then(u => { if (u) { setFotoCache(tipo, id, u); setUrl(u); } });
+  }, []);
+
   async function onFile(e) {
     const file = e.target.files[0]; if (!file) return;
-    const b64 = await comprimirImagen(file);
-    saveFoto(tipo, id, b64); setFoto(b64); e.target.value = "";
+    setCarg(true);
+    try {
+      const b64 = await comprimirImagen(file);
+      const newUrl = await uploadFoto(tipo, id, b64);
+      setFotoCache(tipo, id, newUrl);
+      setUrl(newUrl);
+    } catch (err) { alert("Error al subir la foto. Intentá de nuevo."); }
+    finally { setCarg(false); e.target.value = ""; }
   }
-  function quitar() { deleteFoto(tipo, id); setFoto(null); }
+
+  async function quitar() {
+    setCarg(true);
+    try { await deleteFotoStorage(tipo, id); clearFotoCache(tipo, id); setUrl(null); }
+    catch {}
+    finally { setCarg(false); }
+  }
+
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <div style={{ width: 48, height: 48, borderRadius: 8, overflow: "hidden", background: "#f0f4f2", border: "1px solid #d0e8d8", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        {foto ? <img src={foto} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 20 }}>📷</span>}
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+      <div style={{ width: 52, height: 52, borderRadius: 8, overflow: "hidden", background: "#f0f4f2", border: "1px solid #d0e8d8", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        {cargando
+          ? <span style={{ fontSize: 10, color: "#888" }}>...</span>
+          : url
+          ? <img src={url} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          : <span style={{ fontSize: 22 }}>📷</span>}
       </div>
-      <input ref={ref} type="file" accept="image/*" style={{ display: "none" }} onChange={onFile} />
-      <button style={G.btn(foto ? "#4a8a5a" : "#1a7a3a")} onClick={() => ref.current.click()}>{foto ? "Cambiar" : "Subir foto"}</button>
-      {foto && <button style={G.btn("#dc2626")} onClick={quitar}>✕</button>}
+      <input ref={inputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onFile} />
+      <button style={G.btn(url ? "#4a8a5a" : "#1a7a3a")} onClick={() => inputRef.current.click()} disabled={cargando}>
+        {cargando ? "Subiendo..." : url ? "Cambiar" : "Subir foto"}
+      </button>
+      {url && !cargando && <button style={G.btn("#dc2626")} onClick={quitar}>✕</button>}
     </div>
   );
 }
 
-// ── Sección editable de items ──────────────────────────────────────
-function SeccionItems({ titulo, icon, items, setItems, saveFn, tipoFoto, mostrarSimDoTri = false, mostrarPrecio = true }) {
-  function set(id, campo, valor) {
-    const next = items.map(i => i.id === id ? { ...i, [campo]: valor } : i);
-    setItems(next); saveFn(next);
-  }
+// ── Sección editable ───────────────────────────────────────────────
+function SeccionItems({ titulo, icon, items, onUpdate, tipoFoto, mostrarSimDoTri = false }) {
+  function set(id, campo, valor) { onUpdate(items.map(i => i.id === id ? { ...i, [campo]: valor } : i)); }
   return (
     <div style={{ marginBottom: 28 }}>
       <div style={{ fontWeight: 700, fontSize: 15, color: "#1a3a25", marginBottom: 12 }}>{icon} {titulo}</div>
       {items.map(item => (
         <div key={item.id} style={{ ...G.card, opacity: item.disponible ? 1 : 0.55 }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-            {/* Foto */}
             <FotoUpload tipo={tipoFoto} id={item.id} />
-
-            {/* Datos */}
             <div style={{ flex: "2 1 160px", display: "flex", flexDirection: "column", gap: 6 }}>
               <input style={{ ...G.input, width: "100%", fontWeight: 700, fontSize: 14 }}
                 value={item.nombre} onChange={e => set(item.id, "nombre", e.target.value)} />
               {item.desc !== undefined && (
-                <input style={{ ...G.input, width: "100%", fontSize: 12, color: "#666" }}
+                <input style={{ ...G.input, width: "100%", fontSize: 12, color: "#555" }}
                   value={item.desc} onChange={e => set(item.id, "desc", e.target.value)} placeholder="Descripción..." />
               )}
               {item.detalle !== undefined && (
-                <input style={{ ...G.input, width: "100%", fontSize: 12, color: "#666" }}
+                <input style={{ ...G.input, width: "100%", fontSize: 12, color: "#555" }}
                   value={item.detalle} onChange={e => set(item.id, "detalle", e.target.value)} placeholder="Detalle..." />
               )}
             </div>
-
-            {/* Precios */}
             {mostrarSimDoTri ? (
               <div style={{ display: "flex", gap: 6, alignItems: "flex-end", flexWrap: "wrap" }}>
-                {[["simple","Simple"],["doble","Doble"],["triple","Triple"]].map(([k,l]) => (
+                {[["simple","Simple"],["doble","Doble"],["triple","Triple"]].map(([k, l]) => (
                   <div key={k} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                     <span style={{ fontSize: 10, color: "#888" }}>{l}</span>
                     <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
@@ -108,15 +127,13 @@ function SeccionItems({ titulo, icon, items, setItems, saveFn, tipoFoto, mostrar
                   </div>
                 ))}
               </div>
-            ) : mostrarPrecio ? (
+            ) : (
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                 <span style={{ fontSize: 12, color: "#888" }}>$</span>
                 <input type="number" style={{ ...G.input, width: 100, textAlign: "right" }}
                   value={item.precio} onChange={e => set(item.id, "precio", parseFloat(e.target.value) || 0)} />
               </div>
-            ) : null}
-
-            {/* Disponible */}
+            )}
             <button style={G.btn(item.disponible ? "#f59e0b" : "#1a7a3a")} onClick={() => set(item.id, "disponible", !item.disponible)}>
               {item.disponible ? "Ocultar" : "Mostrar"}
             </button>
@@ -129,15 +146,10 @@ function SeccionItems({ titulo, icon, items, setItems, saveFn, tipoFoto, mostrar
 
 // ── Mapa admin ─────────────────────────────────────────────────────
 function MapaAdmin({ zona, onGuardar, onLimpiar }) {
-  const ref = useRef(null);
-  const mapRef = useRef(null);
-  const drawnRef = useRef(null);
-  const { useEffect } = require !== undefined ? { useEffect: (fn, deps) => { /* noop */ } } : {};
+  const ref     = useRef(null);
+  const mapRef  = useRef(null);
+  const drawnRef= useRef(null);
 
-  // Usamos import dinámico
-  const [listo, setListo] = useState(false);
-
-  // Inicializar mapa
   function initMap(el) {
     if (!el || mapRef.current) return;
     import("leaflet").then(Lmod => {
@@ -161,14 +173,13 @@ function MapaAdmin({ zona, onGuardar, onLimpiar }) {
       });
       drawnRef.current = { puntos, markers, getLine: () => polyLine };
       mapRef.current = map;
-      setListo(true);
     });
   }
 
   function guardar() {
     const dl = drawnRef.current;
     if (!dl || dl.puntos.length < 3) { alert("Marcá al menos 3 puntos en el mapa"); return; }
-    onGuardar([...dl.puntos]); alert("✅ Zona guardada");
+    onGuardar([...dl.puntos]);
   }
   function limpiar() {
     const dl = drawnRef.current;
@@ -186,7 +197,7 @@ function MapaAdmin({ zona, onGuardar, onLimpiar }) {
         <button style={G.btn()} onClick={guardar}>✅ Guardar zona</button>
         <button style={G.btn("#dc2626")} onClick={limpiar}>🗑 Limpiar</button>
       </div>
-      <div ref={el => { if (el && !mapRef.current) initMap(el); }} style={{ height: 460, borderRadius: 12, overflow: "hidden", border: "1px solid #d4edd9" }} />
+      <div ref={el => initMap(el)} style={{ height: 460, borderRadius: 12, overflow: "hidden", border: "1px solid #d4edd9" }} />
     </div>
   );
 }
@@ -194,12 +205,45 @@ function MapaAdmin({ zona, onGuardar, onLimpiar }) {
 // ── Panel principal ────────────────────────────────────────────────
 export default function PaginaAdmin() {
   const [logueado, setLogueado] = useState(() => localStorage.getItem(LS_SESSION) === "1");
-  const [tab, setTab] = useState(0);
-  const [burgers, setBurgers]           = useState(loadBurgers);
-  const [guarniciones, setGuarniciones] = useState(loadGuarniciones);
-  const [extras, setExtras]             = useState(loadExtras);
-  const [bebidas, setBebidas]           = useState(loadBebidas);
-  const [zona, setZona]                 = useState(loadZona);
+  const [tab, setTab]           = useState(0);
+  const [cargando, setCargando] = useState(true);
+  const [guardando, setGuardando] = useState(false);
+  const [flashOk, setFlashOk]   = useState(false);
+
+  const [burgers,      setBurgers]      = useState(BURGERS_DEFAULT);
+  const [guarniciones, setGuarniciones] = useState(GUARNICIONES_DEFAULT);
+  const [extras,       setExtras]       = useState(EXTRAS_DEFAULT);
+  const [bebidas,      setBebidas]      = useState(BEBIDAS_DEFAULT);
+  const [zona,         setZona]         = useState([]);
+
+  // Suscripción en tiempo real
+  useEffect(() => {
+    if (!logueado) return;
+    const unsubMenu = subscribeMenu(data => {
+      setBurgers(data.burgers);
+      setGuarniciones(data.guarniciones);
+      setExtras(data.extras);
+      setBebidas(data.bebidas);
+      setCargando(false);
+    });
+    const unsubZona = subscribeZona(z => setZona(z));
+    return () => { unsubMenu(); unsubZona(); };
+  }, [logueado]);
+
+  async function guardarMenu() {
+    setGuardando(true);
+    try {
+      await saveMenuFirestore({ burgers, guarniciones, extras, bebidas });
+      setFlashOk(true); setTimeout(() => setFlashOk(false), 2500);
+    } catch { alert("Error al guardar. Revisá tu conexión."); }
+    finally { setGuardando(false); }
+  }
+
+  async function guardarZona(z) {
+    setZona(z);
+    await saveZonaFirestore(z);
+    alert("✅ Zona guardada");
+  }
 
   if (!logueado) return <Login onLogin={() => setLogueado(true)} />;
 
@@ -229,27 +273,38 @@ export default function PaginaAdmin() {
           </div>
         </div>
 
+        {/* Flash guardado */}
+        {flashOk && (
+          <div style={{ background: "#e8f5ec", border: "1px solid #1a7a3a", borderRadius: 10, padding: "10px 16px", marginBottom: 16, fontWeight: 700, color: "#1a7a3a", fontSize: 13 }}>
+            ✅ Cambios guardados — ya los ven todos los clientes
+          </div>
+        )}
+
         {/* Tabs */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
           {["🍔 Hamburguesas", "🍟 Guarniciones", "➕ Extras", "🥤 Bebidas", "🗺️ Zona Delivery"].map((t, i) => (
             <button key={i} onClick={() => setTab(i)} style={G.tab(tab === i)}>{t}</button>
           ))}
         </div>
 
-        {tab === 0 && (
-          <SeccionItems titulo="Hamburguesas" icon="🍔" items={burgers} setItems={setBurgers} saveFn={saveBurgers} tipoFoto="burger" mostrarSimDoTri={true} />
-        )}
-        {tab === 1 && (
-          <SeccionItems titulo="Guarniciones" icon="🍟" items={guarniciones} setItems={setGuarniciones} saveFn={saveGuarniciones} tipoFoto="guar" />
-        )}
-        {tab === 2 && (
-          <SeccionItems titulo="Extras para la burger" icon="➕" items={extras} setItems={setExtras} saveFn={saveExtras} tipoFoto="extra" />
-        )}
-        {tab === 3 && (
-          <SeccionItems titulo="Bebidas" icon="🥤" items={bebidas} setItems={setBebidas} saveFn={saveBebidas} tipoFoto="bebida" />
-        )}
-        {tab === 4 && (
-          <MapaAdmin zona={zona} onGuardar={z => { setZona(z); saveZona(z); }} onLimpiar={() => { setZona([]); saveZona([]); }} />
+        {cargando ? (
+          <div style={{ textAlign: "center", padding: "60px 0", color: "#888" }}>Cargando menú...</div>
+        ) : (
+          <>
+            {tab < 4 && (
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+                <button onClick={guardarMenu} disabled={guardando} style={{ ...G.btn(), padding: "10px 24px", fontSize: 14, opacity: guardando ? 0.7 : 1 }}>
+                  {guardando ? "Guardando..." : "💾 Guardar cambios"}
+                </button>
+              </div>
+            )}
+
+            {tab === 0 && <SeccionItems titulo="Hamburguesas" icon="🍔" items={burgers} onUpdate={setBurgers} tipoFoto="burger" mostrarSimDoTri />}
+            {tab === 1 && <SeccionItems titulo="Guarniciones" icon="🍟" items={guarniciones} onUpdate={setGuarniciones} tipoFoto="guar" />}
+            {tab === 2 && <SeccionItems titulo="Extras para la burger" icon="➕" items={extras} onUpdate={setExtras} tipoFoto="extra" />}
+            {tab === 3 && <SeccionItems titulo="Bebidas" icon="🥤" items={bebidas} onUpdate={setBebidas} tipoFoto="bebida" />}
+            {tab === 4 && <MapaAdmin zona={zona} onGuardar={guardarZona} onLimpiar={async () => { setZona([]); await saveZonaFirestore([]); }} />}
+          </>
         )}
       </div>
     </div>

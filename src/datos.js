@@ -1,18 +1,20 @@
-// Datos por defecto — se cargan en localStorage la primera vez
+import { db, storage, doc, setDoc, onSnapshot, ref, uploadString, getDownloadURL, deleteObject } from "./firebase.js";
+
+// ── Datos por defecto ─────────────────────────────────────────────
 export const BURGERS_DEFAULT = [
-  { id: 1,  nombre: "CHEESEBURGER",  tag: "RENOVADA", desc: "Pan brioche, doble cheddar, medallón 100gr, aderezo a base de mayonesa.",                                                    simple: 11000, doble: 13000, triple: 15000, disponible: true },
-  { id: 2,  nombre: "ROSES",         tag: "RENOVADA", desc: "Pan brioche, doble cheddar, medallón 100gr, ketchup, mayonesa, cebolla brunoise.",                                            simple: 11000, doble: 13000, triple: 15000, disponible: true },
-  { id: 3,  nombre: "1967",          tag: null,        desc: "Pan brioche, doble cheddar, medallón 100gr, lechuga, cebolla, pepino, aderezo a base de mayonesa.",                          simple: 11000, doble: 13000, triple: 15000, disponible: true },
-  { id: 4,  nombre: "CLASSIC",       tag: "RENOVADA", desc: "Pan brioche, doble cheddar, medallón 100gr, lechuga, tomate, cebolla, pepino, salsa mil islas.",                             simple: 11000, doble: 13000, triple: 15000, disponible: true },
-  { id: 5,  nombre: "CHEESE ONION",  tag: "RENOVADA", desc: "Pan brioche, doble cheddar, medallón smashed 100gr, cebolla, aderezo a base de mayonesa.",                                   simple: 11000, doble: 13000, triple: 15000, disponible: true },
-  { id: 6,  nombre: "COWBOY",        tag: "NUEVA",    desc: "Pan brioche, doble cheddar, medallón 100gr, cowboy butter.",                                                                 simple: 11000, doble: 13000, triple: 15000, disponible: true },
-  { id: 7,  nombre: "SMOKEY BACON",  tag: "RENOVADA", desc: "Pan brioche, doble cheddar, medallón 100gr, panceta ahumada, cebolla crispy, barbacoa.",                                     simple: 11000, doble: 13000, triple: 15000, disponible: true },
-  { id: 8,  nombre: "BLUE CHEESE",   tag: "RENOVADA", desc: "Pan brioche, roquefort, medallón 100gr, rúcula, panceta, cebolla caramelizada, honey mustard.",                              simple: 11000, doble: 13000, triple: 15000, disponible: true },
-  { id: 9,  nombre: "STACKED ONION", tag: "RENOVADA", desc: "Pan brioche, doble cheddar, medallón 100gr, panceta ahumada, aros de cebolla, stacked sauce.",                              simple: 11000, doble: 13000, triple: 15000, disponible: true },
-  { id: 10, nombre: "CHEESE BACON",  tag: "RENOVADA", desc: "Pan brioche, doble cheddar, medallón 100gr, panceta ahumada, bacon sauce.",                                                  simple: 11000, doble: 13000, triple: 15000, disponible: true },
-  { id: 11, nombre: "BIGGIE BURGER", tag: "RENOVADA", desc: "Pan brioche, doble cheddar, medallón 100gr, panceta ahumada, lechuga, cebolla morada, pepino, tasty sauce.",                simple: 11000, doble: 13000, triple: 15000, disponible: true },
-  { id: 12, nombre: "CRISPY GARLIC", tag: "NUEVA",    desc: "Pan brioche, doble cheddar, medallón 100gr, panceta ahumada, cebolla crispy, alioli.",                                       simple: 11000, doble: 13000, triple: 15000, disponible: true },
-  { id: 13, nombre: "RUBY CLOVE",    tag: "NUEVA",    desc: "Pan brioche, doble cheddar, medallón 100gr, cebolla morada brunoise, alioli.",                                               simple: 11000, doble: 13000, triple: 15000, disponible: true },
+  { id: 1,  nombre: "CHEESEBURGER",  tag: "RENOVADA", desc: "Pan brioche, doble cheddar, medallón 100gr, aderezo a base de mayonesa.",                                      simple: 11000, doble: 13000, triple: 15000, disponible: true },
+  { id: 2,  nombre: "ROSES",         tag: "RENOVADA", desc: "Pan brioche, doble cheddar, medallón 100gr, ketchup, mayonesa, cebolla brunoise.",                              simple: 11000, doble: 13000, triple: 15000, disponible: true },
+  { id: 3,  nombre: "1967",          tag: null,        desc: "Pan brioche, doble cheddar, medallón 100gr, lechuga, cebolla, pepino, aderezo a base de mayonesa.",            simple: 11000, doble: 13000, triple: 15000, disponible: true },
+  { id: 4,  nombre: "CLASSIC",       tag: "RENOVADA", desc: "Pan brioche, doble cheddar, medallón 100gr, lechuga, tomate, cebolla, pepino, salsa mil islas.",               simple: 11000, doble: 13000, triple: 15000, disponible: true },
+  { id: 5,  nombre: "CHEESE ONION",  tag: "RENOVADA", desc: "Pan brioche, doble cheddar, medallón smashed 100gr, cebolla, aderezo a base de mayonesa.",                     simple: 11000, doble: 13000, triple: 15000, disponible: true },
+  { id: 6,  nombre: "COWBOY",        tag: "NUEVA",    desc: "Pan brioche, doble cheddar, medallón 100gr, cowboy butter.",                                                   simple: 11000, doble: 13000, triple: 15000, disponible: true },
+  { id: 7,  nombre: "SMOKEY BACON",  tag: "RENOVADA", desc: "Pan brioche, doble cheddar, medallón 100gr, panceta ahumada, cebolla crispy, barbacoa.",                       simple: 11000, doble: 13000, triple: 15000, disponible: true },
+  { id: 8,  nombre: "BLUE CHEESE",   tag: "RENOVADA", desc: "Pan brioche, roquefort, medallón 100gr, rúcula, panceta, cebolla caramelizada, honey mustard.",                simple: 11000, doble: 13000, triple: 15000, disponible: true },
+  { id: 9,  nombre: "STACKED ONION", tag: "RENOVADA", desc: "Pan brioche, doble cheddar, medallón 100gr, panceta ahumada, aros de cebolla, stacked sauce.",                simple: 11000, doble: 13000, triple: 15000, disponible: true },
+  { id: 10, nombre: "CHEESE BACON",  tag: "RENOVADA", desc: "Pan brioche, doble cheddar, medallón 100gr, panceta ahumada, bacon sauce.",                                    simple: 11000, doble: 13000, triple: 15000, disponible: true },
+  { id: 11, nombre: "BIGGIE BURGER", tag: "RENOVADA", desc: "Pan brioche, doble cheddar, medallón 100gr, panceta ahumada, lechuga, cebolla morada, pepino, tasty sauce.",  simple: 11000, doble: 13000, triple: 15000, disponible: true },
+  { id: 12, nombre: "CRISPY GARLIC", tag: "NUEVA",    desc: "Pan brioche, doble cheddar, medallón 100gr, panceta ahumada, cebolla crispy, alioli.",                         simple: 11000, doble: 13000, triple: 15000, disponible: true },
+  { id: 13, nombre: "RUBY CLOVE",    tag: "NUEVA",    desc: "Pan brioche, doble cheddar, medallón 100gr, cebolla morada brunoise, alioli.",                                  simple: 11000, doble: 13000, triple: 15000, disponible: true },
 ];
 
 export const GUARNICIONES_DEFAULT = [
@@ -36,42 +38,76 @@ export const BEBIDAS_DEFAULT = [
   { id: "b1", nombre: "Gaseosa", detalle: "Pepsi / Pepsi Black / 7UP / Mirinda 354cc", precio: 3000, disponible: true },
 ];
 
-// ── Storage helpers ───────────────────────────────────────────────
-const K = {
-  burgers:     "rb2-burgers",
-  guarniciones:"rb2-guarniciones",
-  extras:      "rb2-extras",
-  bebidas:     "rb2-bebidas",
-};
+// ── Firestore: menú ───────────────────────────────────────────────
+const MENU_DOC = doc(db, "pedidos-online", "menu");
 
-function lsGet(key, def) {
-  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; } catch { return def; }
+export async function saveMenuFirestore(data) {
+  await setDoc(MENU_DOC, {
+    burgers:      JSON.stringify(data.burgers),
+    guarniciones: JSON.stringify(data.guarniciones),
+    extras:       JSON.stringify(data.extras),
+    bebidas:      JSON.stringify(data.bebidas),
+  });
 }
-function lsSet(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
 
-export function loadBurgers()      { return lsGet(K.burgers,      BURGERS_DEFAULT);      }
-export function loadGuarniciones() { return lsGet(K.guarniciones, GUARNICIONES_DEFAULT); }
-export function loadExtras()       { return lsGet(K.extras,       EXTRAS_DEFAULT);       }
-export function loadBebidas()      { return lsGet(K.bebidas,      BEBIDAS_DEFAULT);      }
+// Suscripción en tiempo real — llama a callback({ burgers, guarniciones, extras, bebidas })
+export function subscribeMenu(callback) {
+  return onSnapshot(MENU_DOC, snap => {
+    if (!snap.exists()) { callback({ burgers: BURGERS_DEFAULT, guarniciones: GUARNICIONES_DEFAULT, extras: EXTRAS_DEFAULT, bebidas: BEBIDAS_DEFAULT }); return; }
+    const d = snap.data();
+    callback({
+      burgers:      safeJSON(d.burgers,      BURGERS_DEFAULT),
+      guarniciones: safeJSON(d.guarniciones, GUARNICIONES_DEFAULT),
+      extras:       safeJSON(d.extras,       EXTRAS_DEFAULT),
+      bebidas:      safeJSON(d.bebidas,      BEBIDAS_DEFAULT),
+    });
+  });
+}
 
-export function saveBurgers(v)      { lsSet(K.burgers,      v); }
-export function saveGuarniciones(v) { lsSet(K.guarniciones, v); }
-export function saveExtras(v)       { lsSet(K.extras,       v); }
-export function saveBebidas(v)      { lsSet(K.bebidas,      v); }
+function safeJSON(str, fallback) {
+  try { return str ? JSON.parse(str) : fallback; } catch { return fallback; }
+}
 
-// Fotos
-export const fotoKey = (tipo, id) => `rb2-foto-${tipo}-${id}`;
-export function loadFoto(tipo, id) { return localStorage.getItem(fotoKey(tipo, id)) || null; }
-export function saveFoto(tipo, id, b64) { localStorage.setItem(fotoKey(tipo, id), b64); }
-export function deleteFoto(tipo, id) { localStorage.removeItem(fotoKey(tipo, id)); }
+// ── Firebase Storage: fotos ───────────────────────────────────────
+// path: pedidos-fotos/{tipo}/{id}.jpg
+export async function uploadFoto(tipo, id, base64) {
+  const storageRef = ref(storage, `pedidos-fotos/${tipo}/${id}.jpg`);
+  await uploadString(storageRef, base64, "data_url");
+  return await getDownloadURL(storageRef);
+}
 
-// Zona
-export const LS_ZONA = "rb2-zona";
-export function loadZona() { try { return JSON.parse(localStorage.getItem(LS_ZONA)) || []; } catch { return []; } }
-export function saveZona(z) { localStorage.setItem(LS_ZONA, JSON.stringify(z)); }
+export async function deleteFotoStorage(tipo, id) {
+  try {
+    const storageRef = ref(storage, `pedidos-fotos/${tipo}/${id}.jpg`);
+    await deleteObject(storageRef);
+  } catch {}
+}
 
-// Comprimir imagen
-export function comprimirImagen(file, maxPx = 600, quality = 0.78) {
+export async function getFotoURL(tipo, id) {
+  try {
+    const storageRef = ref(storage, `pedidos-fotos/${tipo}/${id}.jpg`);
+    return await getDownloadURL(storageRef);
+  } catch { return null; }
+}
+
+// ── Cache local de URLs de fotos (evita re-fetch) ─────────────────
+const fotoCache = {};
+export function getFotoCached(tipo, id) { return fotoCache[`${tipo}-${id}`] || null; }
+export function setFotoCache(tipo, id, url) { fotoCache[`${tipo}-${id}`] = url; }
+export function clearFotoCache(tipo, id) { delete fotoCache[`${tipo}-${id}`]; }
+
+// ── Zona delivery ─────────────────────────────────────────────────
+const ZONA_DOC = doc(db, "pedidos-online", "zona");
+export async function saveZonaFirestore(zona) { await setDoc(ZONA_DOC, { zona: JSON.stringify(zona) }); }
+export function subscribeZona(callback) {
+  return onSnapshot(ZONA_DOC, snap => {
+    if (!snap.exists()) { callback([]); return; }
+    callback(safeJSON(snap.data().zona, []));
+  });
+}
+
+// ── Comprimir imagen ──────────────────────────────────────────────
+export function comprimirImagen(file, maxPx = 700, quality = 0.78) {
   return new Promise(resolve => {
     const reader = new FileReader();
     reader.onload = e => {

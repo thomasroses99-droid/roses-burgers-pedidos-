@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 import {
-  BURGERS_DEFAULT, GUARNICIONES_DEFAULT, EXTRAS_DEFAULT, BEBIDAS_DEFAULT, ACOMP_DEFAULT, ENVIOS_DEFAULT,
+  BURGERS_DEFAULT, GUARNICIONES_DEFAULT, EXTRAS_DEFAULT, BEBIDAS_DEFAULT, ACOMP_DEFAULT, ENVIOS_DEFAULT, MEDALLONES_DEFAULT,
   subscribeMenu, saveMenuFirestore,
   uploadFoto, deleteFotoStorage, getFotoURL, getFotoCached, setFotoCache, clearFotoCache,
   saveZonaFirestore, subscribeZona,
-  subscribePedidos, updatePedidoEstado, marcarImpreso, saveConfigImpresoras, subscribeConfig,
+  subscribePedidos, updatePedidoEstado, marcarRendido, marcarImpreso, saveConfigImpresoras, subscribeConfig,
+  subscribeCadetes, saveCadetes,
   subscribeEstado, saveEstado,
   comprimirImagen, fmt,
 } from "./datos.js";
@@ -12,7 +13,7 @@ import { imprimirPedido, qzDisponible } from "./imprimir.js";
 
 // Hash SHA-256 de la contraseña — la contraseña real no está en el código fuente
 const ADMIN_PASS_HASH = "1c9c66d9076f00934f4fa3f835ae860ca50b735798bf29300c39593f75013272";
-const LS_SESSION = "rb-admin-session";
+const LS_SESSION = "rb-admin-session-zona-sur";
 
 async function hashStr(str) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
@@ -61,6 +62,7 @@ const NAV_ITEMS = [
   { icon: "🍟", label: "Guarniciones" },
   { icon: "🍟", label: "Acompañamientos" },
   { icon: "➕", label: "Extras" },
+  { icon: "🥩", label: "Medallón" },
   { icon: "🥤", label: "Bebidas" },
   { icon: "🚚", label: "Envíos" },
   { icon: "🗺️", label: "Zona Delivery" },
@@ -80,7 +82,7 @@ function Login({ onLogin }) {
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#1a3a25" }}>
       <div style={{ background: "#fff", borderRadius: 16, padding: "40px 36px", width: "100%", maxWidth: 340, textAlign: "center", boxShadow: "0 8px 40px #0004" }}>
         <div style={{ fontSize: 40, marginBottom: 8 }}>🍔</div>
-        <div style={{ fontSize: 22, fontWeight: 900, color: "#1a3a25", marginBottom: 4 }}>Roses Burgers</div>
+        <div style={{ fontSize: 22, fontWeight: 900, color: "#1a3a25", marginBottom: 4 }}>Roses Burgers — Zona Sur</div>
         <div style={{ fontSize: 13, color: "#888", marginBottom: 28 }}>Panel de administración</div>
         <input type="password" style={{ ...G.input, width: "100%", textAlign: "center", fontSize: 15, padding: "12px", marginBottom: 12 }}
           placeholder="Contraseña" value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key === "Enter" && intentar()} autoFocus />
@@ -142,9 +144,61 @@ function FotoUpload({ tipo, id }) {
 // ── Sección editable ───────────────────────────────────────────────
 function SeccionItems({ titulo, icon, items, onUpdate, tipoFoto, mostrarSimDoTri = false }) {
   function set(id, campo, valor) { onUpdate(items.map(i => i.id === id ? { ...i, [campo]: valor } : i)); }
+
+  const [masivo, setMasivo] = useState({ simple: "", doble: "", triple: "" });
+  const [aplicado, setAplicado] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [newItem, setNewItem] = useState({});
+
+  const tieneDetalle = !mostrarSimDoTri && items.length > 0 && items[0].detalle !== undefined;
+
+  function initNewItem() {
+    if (mostrarSimDoTri) return { nombre: "", desc: "", tag: "", simple: 0, doble: 0, triple: 0, disponible: true };
+    if (tieneDetalle) return { nombre: "", detalle: "", precio: 0, disponible: true };
+    return { nombre: "", precio: 0, disponible: true };
+  }
+
+  function aplicarATodas() {
+    const upd = { ...masivo };
+    onUpdate(items.map(item => ({
+      ...item,
+      ...(upd.simple !== "" ? { simple: parseFloat(upd.simple) || 0 } : {}),
+      ...(upd.doble  !== "" ? { doble:  parseFloat(upd.doble)  || 0 } : {}),
+      ...(upd.triple !== "" ? { triple: parseFloat(upd.triple) || 0 } : {}),
+    })));
+    setAplicado(true);
+    setTimeout(() => setAplicado(false), 2000);
+  }
+
+  function agregarItem() {
+    if (!newItem.nombre?.trim()) return;
+    onUpdate([...items, { ...newItem, id: Date.now() }]);
+    setNewItem(initNewItem());
+    setShowForm(false);
+  }
+
   return (
     <div style={{ marginBottom: 28 }}>
       <div style={{ fontWeight: 700, fontSize: 15, color: "#1a3a25", marginBottom: 12 }}>{icon} {titulo}</div>
+      {mostrarSimDoTri && (
+        <div style={{ ...G.card, background: "#f0faf4", border: "1px solid #a5d6a7", marginBottom: 14, display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#1a5c2a", width: "100%", marginBottom: 2 }}>Aplicar mismo precio a todas las hamburguesas</div>
+          {[["simple","Simple"],["doble","Doble"],["triple","Triple"]].map(([k, l]) => (
+            <div key={k} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              <span style={{ fontSize: 10, color: "#5a8a6e", fontWeight: 700 }}>{l}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                <span style={{ fontSize: 12, color: "#888" }}>$</span>
+                <input type="number" placeholder="—" style={{ ...G.input, width: 100, textAlign: "right" }}
+                  value={masivo[k]} onChange={e => setMasivo(m => ({ ...m, [k]: e.target.value }))} />
+              </div>
+            </div>
+          ))}
+          <button onClick={aplicarATodas}
+            style={{ ...G.btn(aplicado ? "#4caf50" : "#1a7a3a"), padding: "9px 18px", fontSize: 13 }}>
+            {aplicado ? "✓ Aplicado" : "Aplicar a todas"}
+          </button>
+        </div>
+      )}
       {items.map(item => (
         <div key={item.id} style={{ ...G.card, opacity: item.disponible ? 1 : 0.55 }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
@@ -187,6 +241,66 @@ function SeccionItems({ titulo, icon, items, onUpdate, tipoFoto, mostrarSimDoTri
           </div>
         </div>
       ))}
+
+      {/* Agregar nuevo artículo */}
+      {!showForm ? (
+        <button onClick={() => { setNewItem(initNewItem()); setShowForm(true); }}
+          style={{ ...G.btn("#2563eb"), width: "100%", padding: "10px", fontSize: 13, marginTop: 4 }}>
+          + Agregar artículo
+        </button>
+      ) : (
+        <div style={{ ...G.card, border: "1px solid #a5c8f0", background: "#f0f6ff", marginTop: 8 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: "#1a3a25", marginBottom: 10 }}>Nuevo artículo</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <input style={{ ...G.input, width: "100%", fontWeight: 700 }}
+              placeholder="Nombre *" value={newItem.nombre || ""}
+              onChange={e => setNewItem(p => ({ ...p, nombre: e.target.value }))} autoFocus />
+            {mostrarSimDoTri && <>
+              <input style={{ ...G.input, width: "100%" }}
+                placeholder="Descripción" value={newItem.desc || ""}
+                onChange={e => setNewItem(p => ({ ...p, desc: e.target.value }))} />
+              <input style={{ ...G.input, width: "100%" }}
+                placeholder="Tag (ej: NUEVA, VEGGIE...)" value={newItem.tag || ""}
+                onChange={e => setNewItem(p => ({ ...p, tag: e.target.value }))} />
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {[["simple","Simple"],["doble","Doble"],["triple","Triple"]].map(([k, l]) => (
+                  <div key={k} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <span style={{ fontSize: 11, color: "#555", fontWeight: 700 }}>{l}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                      <span style={{ fontSize: 12, color: "#888" }}>$</span>
+                      <input type="number" style={{ ...G.input, width: 100, textAlign: "right" }}
+                        placeholder="0" value={newItem[k] || ""}
+                        onChange={e => setNewItem(p => ({ ...p, [k]: parseFloat(e.target.value) || 0 }))} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>}
+            {tieneDetalle && (
+              <input style={{ ...G.input, width: "100%" }}
+                placeholder="Detalle" value={newItem.detalle || ""}
+                onChange={e => setNewItem(p => ({ ...p, detalle: e.target.value }))} />
+            )}
+            {!mostrarSimDoTri && (
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ fontSize: 12, color: "#888" }}>Precio $</span>
+                <input type="number" style={{ ...G.input, width: 120, textAlign: "right" }}
+                  placeholder="0" value={newItem.precio || ""}
+                  onChange={e => setNewItem(p => ({ ...p, precio: parseFloat(e.target.value) || 0 }))} />
+              </div>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <button onClick={agregarItem} disabled={!newItem.nombre?.trim()}
+              style={{ ...G.btn(), opacity: !newItem.nombre?.trim() ? 0.5 : 1 }}>
+              ✓ Agregar
+            </button>
+            <button onClick={() => setShowForm(false)} style={G.btn("#6b7280")}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -321,7 +435,7 @@ function MapaPedidos({ pedidos }) {
 }
 
 // ── Tab Pedidos ────────────────────────────────────────────────────
-function TarjetaPedido({ ped, config, onCambioEstado }) {
+function TarjetaPedido({ ped, config, onCambioEstado, onRendido = null }) {
   const [imprimiendo, setImp] = useState(false);
   const tipoLabel = ped.tipo === "delivery" ? "🛵 Delivery" : "🏠 Retiro";
   const pagoColor = p => p === "Efectivo" ? "#92400e" : p === "Transferencia" ? "#1e40af" : "#065f46";
@@ -336,7 +450,7 @@ function TarjetaPedido({ ped, config, onCambioEstado }) {
     finally { setImp(false); }
   }
 
-  const borderColor = ped.estado === "cancelado" ? "#dc2626" : ped.estado === "entregado" ? "#059669" : ped.tipo === "delivery" ? "#2563eb" : "#1a7a3a";
+  const borderColor = ped.estado === "cancelado" ? "#dc2626" : ped.estado === "entregado" && ped.rendido ? "#f59e0b" : ped.estado === "entregado" ? "#059669" : ped.tipo === "delivery" ? "#2563eb" : "#1a7a3a";
 
   return (
     <div style={{ ...G.card, borderLeft: `4px solid ${borderColor}`, marginBottom: 12 }}>
@@ -348,7 +462,8 @@ function TarjetaPedido({ ped, config, onCambioEstado }) {
             <span style={{ fontSize: 12, color: "#888" }}>{ped.hora} — {ped.fecha}</span>
             <span style={{ background: "#fef3c7", color: pagoColor(ped.pago), fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>{ped.pago}</span>
             {ped.estado === "cancelado" && <span style={{ background: "#fef2f2", color: "#dc2626", fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>CANCELADO</span>}
-            {ped.estado === "entregado" && <span style={{ background: "#f0fdf4", color: "#059669", fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>ENTREGADO</span>}
+            {ped.estado === "entregado" && !ped.rendido && <span style={{ background: "#f0fdf4", color: "#059669", fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>ENTREGADO</span>}
+            {ped.rendido && <span style={{ background: "#fef3c7", color: "#92400e", fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>💰 RENDIDO</span>}
           </div>
 
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>👤 {ped.cliente}</div>
@@ -384,6 +499,11 @@ function TarjetaPedido({ ped, config, onCambioEstado }) {
             {imprimiendo ? "Imprimiendo..." : "🖨️ Reimprimir"}
           </button>
           {ped.estado === "pendiente" && <>
+            {onRendido && (
+              <button onClick={onRendido} style={{ ...G.btn("#f59e0b", "#fff"), minWidth: 130 }}>
+                💰 Rendido
+              </button>
+            )}
             <button onClick={() => onCambioEstado(ped.id, "entregado")} style={{ ...G.btn("#059669"), minWidth: 130 }}>
               ✅ Entregado
             </button>
@@ -398,8 +518,9 @@ function TarjetaPedido({ ped, config, onCambioEstado }) {
 }
 
 function TabPedidos() {
-  const [pedidos,  setPedidos] = useState([]);
-  const [config,   setConfig]  = useState({ ipCocina: "", ipBarra: "" });
+  const [pedidos,      setPedidos]      = useState([]);
+  const [asignaciones, setAsignaciones] = useState({});
+  const [config,       setConfig]       = useState({ ipCocina: "", ipBarra: "" });
   const [qzOk,       setQzOk]      = useState(null);
   const [ipEdit,     setIpEdit]    = useState(false);
   const [ipForm,     setIpForm]    = useState({ ipCocina: "", ipBarra: "" });
@@ -425,8 +546,8 @@ function TabPedidos() {
             // Alerta sonora (usa AudioContext pre-calentado en login)
             playAlertSound();
             // Alerta visual: título de pestaña y estado
-            document.title = "🔔 NUEVO PEDIDO — Roses Burgers";
-            setTimeout(() => { document.title = "Roses Burgers - Admin"; }, 6000);
+            document.title = "🔔 NUEVO PEDIDO — Zona Sur";
+            setTimeout(() => { document.title = "Roses Burgers - Zona Sur Admin"; }, 6000);
             setAlertaPedido(true);
             setTimeout(() => setAlertaPedido(false), 5000);
             // Imprimir
@@ -439,10 +560,11 @@ function TabPedidos() {
       });
     }, err => setFireErr(err.message));
     const u2 = subscribeConfig(c => { setConfig(c); setIpForm(c); });
+    const u3 = subscribeCadetes(d => setAsignaciones(d.asignaciones));
     const checkServidor = () => qzDisponible().then(ok => setQzOk(ok));
     checkServidor();
     const interval = setInterval(checkServidor, 30000);
-    return () => { u1(); u2(); clearInterval(interval); };
+    return () => { u1(); u2(); u3(); clearInterval(interval); };
   }, []);
 
   async function guardarIPs() {
@@ -458,6 +580,7 @@ function TabPedidos() {
   ];
   const hoy        = new Date().toLocaleDateString("es-AR");
   const enCurso    = pedidos.filter(p => p.estado === "pendiente");
+  const enCamino   = pedidos.filter(p => p.estado === "pendiente" && p.tipo === "delivery" && asignaciones[p.id]);
   const entregados = pedidos.filter(p => p.estado === "entregado");
   const cancelados = pedidos.filter(p => p.estado === "cancelado");
 
@@ -529,6 +652,12 @@ function TabPedidos() {
         <button style={subTabStyle(subTab === "mapa")} onClick={() => setSubTab("mapa")}>
           🗺️ Mapa {enCurso.filter(p => p.tipo === "delivery").length > 0 && <span style={{ background: "#2563eb", color: "#fff", borderRadius: 12, padding: "1px 7px", fontSize: 11, marginLeft: 6 }}>{enCurso.filter(p => p.tipo === "delivery").length}</span>}
         </button>
+        <button style={subTabStyle(subTab === "camino")} onClick={() => setSubTab("camino")}>
+          🛵 En Camino {enCamino.length > 0 && <span style={{ background: "#f59e0b", color: "#fff", borderRadius: 12, padding: "1px 7px", fontSize: 11, marginLeft: 6 }}>{enCamino.length}</span>}
+        </button>
+        <button style={subTabStyle(subTab === "cadetes")} onClick={() => setSubTab("cadetes")}>
+          Cadetes
+        </button>
         <button style={subTabStyle(subTab === "entregados")} onClick={() => setSubTab("entregados")}>
           Entregados {entregados.length > 0 && <span style={{ background: "#059669", color: "#fff", borderRadius: 12, padding: "1px 7px", fontSize: 11, marginLeft: 6 }}>{entregados.length}</span>}
         </button>
@@ -541,6 +670,20 @@ function TabPedidos() {
 
       {/* Mapa delivery */}
       {subTab === "mapa" && <MapaPedidos pedidos={pedidos} />}
+
+      {/* En Camino */}
+      {subTab === "camino" && (
+        enCamino.length === 0
+          ? <div style={{ textAlign: "center", padding: "60px 0", color: "#aaa", fontSize: 15 }}>No hay pedidos en camino — asigná pedidos a cadetes desde la solapa Cadetes</div>
+          : enCamino.map(ped => (
+              <TarjetaPedido key={ped.id} ped={ped} config={config}
+                onCambioEstado={updatePedidoEstado}
+                onRendido={() => marcarRendido(ped.id)} />
+            ))
+      )}
+
+      {/* Cadetes */}
+      {subTab === "cadetes" && <TabCadetes pedidos={pedidos} />}
 
       {/* Pedidos en curso */}
       {subTab === "curso" && (
@@ -663,6 +806,176 @@ function SeccionEnvios({ envios, onUpdate }) {
   );
 }
 
+// ── Tab Cadetes ───────────────────────────────────────────────────
+function TabCadetes({ pedidos }) {
+  const [cadetes,     setCadetes]     = useState([]);
+  const [asignaciones, setAsignaciones] = useState({});
+  const [nuevoNombre, setNuevoNombre] = useState("");
+  const [draggingId,  setDraggingId]  = useState(null);
+  const hoy = new Date().toLocaleDateString("es-AR");
+
+  useEffect(() => subscribeCadetes(d => { setCadetes(d.cadetes); setAsignaciones(d.asignaciones); }), []);
+
+  async function guardar(nc, na) {
+    try { await saveCadetes(hoy, nc, na); } catch { alert("Error al guardar. Revisá tu conexión."); }
+  }
+
+  async function agregarCadete() {
+    if (!nuevoNombre.trim()) return;
+    const updated = [...cadetes, { id: Date.now(), nombre: nuevoNombre.trim() }];
+    setCadetes(updated); setNuevoNombre("");
+    await guardar(updated, asignaciones);
+  }
+
+  async function eliminarCadete(id) {
+    const updated = cadetes.filter(c => c.id !== id);
+    const updatedAsig = Object.fromEntries(Object.entries(asignaciones).filter(([, cid]) => cid !== id));
+    setCadetes(updated); setAsignaciones(updatedAsig);
+    await guardar(updated, updatedAsig);
+  }
+
+  async function asignar(pedidoId, cadeteId) {
+    const updatedAsig = { ...asignaciones, [pedidoId]: cadeteId };
+    setAsignaciones(updatedAsig);
+    await guardar(cadetes, updatedAsig);
+  }
+
+  async function desasignar(pedidoId) {
+    const updatedAsig = { ...asignaciones };
+    delete updatedAsig[pedidoId];
+    setAsignaciones(updatedAsig);
+    await guardar(cadetes, updatedAsig);
+  }
+
+  const deliveryPedidos = pedidos.filter(p => p.tipo === "delivery" && p.estado !== "cancelado");
+  const sinAsignar = deliveryPedidos.filter(p => p.estado === "pendiente" && !asignaciones[p.id]);
+
+  const pagoColor = p => p === "Efectivo" ? "#92400e" : "#1e40af";
+  const pagoBg    = p => p === "Efectivo" ? "#fef3c7" : "#dbeafe";
+  const pagoLabel = p => p === "Efectivo" ? "💵 Efectivo" : p === "Transferencia" ? "🔄 Trans." : "🔗 Link";
+
+  return (
+    <div>
+      {/* Agregar cadete */}
+      <div style={{ ...G.card, display: "flex", gap: 10, alignItems: "center", marginBottom: 20 }}>
+        <input style={{ ...G.input, flex: 1 }} placeholder="Nombre del cadete..."
+          value={nuevoNombre} onChange={e => setNuevoNombre(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && agregarCadete()} autoFocus />
+        <button style={{ ...G.btn(), opacity: !nuevoNombre.trim() ? 0.5 : 1 }}
+          onClick={agregarCadete} disabled={!nuevoNombre.trim()}>
+          + Agregar cadete
+        </button>
+      </div>
+
+      {/* Pedidos sin asignar */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: "#1a3a25", marginBottom: 8 }}>
+          Pedidos sin asignar
+          {sinAsignar.length > 0 && <span style={{ background: "#dc2626", color: "#fff", borderRadius: 10, padding: "1px 7px", fontSize: 11, marginLeft: 6 }}>{sinAsignar.length}</span>}
+        </div>
+        <div
+          onDragOver={e => e.preventDefault()}
+          onDrop={async e => { const pid = e.dataTransfer.getData("pedidoId"); if (pid) await desasignar(pid); }}
+          style={{ display: "flex", flexWrap: "wrap", gap: 8, minHeight: 50, background: "#f4f7f5", borderRadius: 10, padding: 12, border: "2px dashed #c0d8c8" }}>
+          {sinAsignar.length === 0
+            ? <span style={{ color: "#bbb", fontSize: 13, alignSelf: "center" }}>
+                {deliveryPedidos.filter(p => p.estado === "pendiente").length === 0 ? "No hay pedidos delivery pendientes" : "Todos asignados ✓"}
+              </span>
+            : sinAsignar.map(p => (
+              <div key={p.id} draggable
+                onDragStart={e => { e.dataTransfer.setData("pedidoId", p.id); setDraggingId(p.id); }}
+                onDragEnd={() => setDraggingId(null)}
+                style={{ background: "#dbeafe", color: "#1e40af", border: "1px solid #93c5fd", borderRadius: 8, padding: "7px 14px", fontSize: 13, fontWeight: 900, cursor: "grab", userSelect: "none", opacity: draggingId === p.id ? 0.4 : 1 }}>
+                #{p.numero}
+              </div>
+            ))}
+        </div>
+      </div>
+
+      {/* Cadetes del día */}
+      {cadetes.length === 0
+        ? <div style={{ textAlign: "center", padding: "40px 0", color: "#aaa", fontSize: 14 }}>Agregá los cadetes del día para asignar pedidos</div>
+        : cadetes.map(cadete => {
+          const asignados  = deliveryPedidos.filter(p => asignaciones[p.id] === cadete.id);
+          const pendientes = asignados.filter(p => p.estado === "pendiente");
+          const totEfectivo = asignados.filter(p => p.pago === "Efectivo").reduce((s, p) => s + (p.total || 0), 0);
+          const totTransf   = asignados.filter(p => p.pago !== "Efectivo").reduce((s, p) => s + (p.total || 0), 0);
+
+          return (
+            <div key={cadete.id}
+              onDragOver={e => e.preventDefault()}
+              onDrop={async e => { const pid = e.dataTransfer.getData("pedidoId"); if (pid) await asignar(pid, cadete.id); }}
+              style={{ ...G.card, marginBottom: 14, border: draggingId ? "2px dashed #1a7a3a" : "1px solid #d0e8d8", transition: "border 0.15s" }}>
+
+              {/* Header */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <div style={{ fontWeight: 800, fontSize: 15, color: "#1a3a25" }}>
+                  🛵 {cadete.nombre}
+                  {pendientes.length > 0 && <span style={{ background: "#2563eb", color: "#fff", borderRadius: 10, padding: "1px 7px", fontSize: 11, marginLeft: 8 }}>{pendientes.length} pend.</span>}
+                </div>
+                <button style={{ ...G.btn("#dc2626"), fontSize: 11, padding: "4px 10px" }}
+                  onClick={() => { if (confirm(`¿Quitar a ${cadete.nombre}?`)) eliminarCadete(cadete.id); }}>
+                  ✕ Quitar
+                </button>
+              </div>
+
+              {/* Pedidos asignados */}
+              {asignados.length === 0
+                ? <div style={{ textAlign: "center", padding: "18px 0", color: "#bbb", fontSize: 13, background: "#f9fafb", borderRadius: 8, border: "1px dashed #e0e0e0" }}>
+                    Arrastrá un pedido acá
+                  </div>
+                : <>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+                    {asignados.map(p => (
+                      <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, background: p.estado === "entregado" ? "#f0fdf4" : "#f4f7f5", borderRadius: 8, padding: "8px 12px", opacity: p.estado === "entregado" ? 0.75 : 1 }}>
+                        <span style={{ fontWeight: 900, fontSize: 14, color: "#1a3a25", minWidth: 34 }}>#{p.numero}</span>
+                        <span style={{ fontWeight: 700, fontSize: 13, color: "#1a7a3a", flex: 1 }}>{fmt(p.total)}</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: pagoColor(p.pago), background: pagoBg(p.pago), padding: "2px 8px", borderRadius: 6 }}>{pagoLabel(p.pago)}</span>
+                        {p.estado === "entregado"
+                          ? <span style={{ fontSize: 11, color: "#059669", fontWeight: 700 }}>✅</span>
+                          : <button onClick={() => desasignar(p.id)} style={{ background: "transparent", border: "none", color: "#ccc", fontSize: 18, cursor: "pointer", lineHeight: 1, padding: 0 }}>×</button>}
+                      </div>
+                    ))}
+                  </div>
+                  {/* Totales */}
+                  <div style={{ display: "flex", gap: 8, paddingTop: 10, borderTop: "1px solid #e8f0eb", flexWrap: "wrap" }}>
+                    {totEfectivo > 0 && <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e", background: "#fef3c7", padding: "4px 10px", borderRadius: 6 }}>💵 Efectivo: {fmt(totEfectivo)}</div>}
+                    {totTransf   > 0 && <div style={{ fontSize: 12, fontWeight: 700, color: "#1e40af", background: "#dbeafe", padding: "4px 10px", borderRadius: 6 }}>🔄 Trans./Link: {fmt(totTransf)}</div>}
+                    <div style={{ fontSize: 12, fontWeight: 900, color: "#1a3a25", background: "#e8f5ec", padding: "4px 10px", borderRadius: 6, marginLeft: "auto" }}>
+                      Total: {fmt(totEfectivo + totTransf)}
+                    </div>
+                  </div>
+                </>}
+            </div>
+          );
+        })}
+    </div>
+  );
+}
+
+// ── Tab Medallón ──────────────────────────────────────────────────
+function TabMedallon({ medallones, onToggle }) {
+  return (
+    <div>
+      <div style={{ fontWeight: 700, fontSize: 15, color: "#1a3a25", marginBottom: 6 }}>🥩 Tipos de medallón</div>
+      <div style={{ fontSize: 13, color: "#888", marginBottom: 16 }}>Deshabilitá un tipo si te quedaste sin stock — el cliente no podrá elegirlo.</div>
+      {medallones.map(m => (
+        <div key={m.id} style={{ ...G.card, opacity: m.disponible ? 1 : 0.5, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>{m.emoji} {m.nombre}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: m.disponible ? "#059669" : "#dc2626" }}>
+              {m.disponible ? "Disponible" : "Sin stock"}
+            </span>
+            <button style={G.btn(m.disponible ? "#f59e0b" : "#1a7a3a")} onClick={() => onToggle(m.id)}>
+              {m.disponible ? "Deshabilitar" : "Habilitar"}
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Panel principal ────────────────────────────────────────────────
 export default function PaginaAdmin() {
   const [logueado, setLogueado] = useState(() => localStorage.getItem(LS_SESSION) === "1");
@@ -678,6 +991,7 @@ export default function PaginaAdmin() {
   const [bebidas,      setBebidas]      = useState(BEBIDAS_DEFAULT);
   const [acomp,        setAcomp]        = useState(ACOMP_DEFAULT);
   const [envios,       setEnvios]       = useState(ENVIOS_DEFAULT);
+  const [medallones,   setMedallones]   = useState(MEDALLONES_DEFAULT);
   const [zona,         setZona]         = useState([]);
 
   useEffect(() => {
@@ -690,16 +1004,24 @@ export default function PaginaAdmin() {
       setBebidas(data.bebidas);
       setAcomp(data.acomp);
       setEnvios(data.envios || ENVIOS_DEFAULT);
+      setMedallones(data.medallones || MEDALLONES_DEFAULT);
       setCargando(false);
     });
     const unsubZona = subscribeZona(z => setZona(z));
     return () => { unsubEstado(); unsubMenu(); unsubZona(); };
   }, [logueado]);
 
+  async function toggleMedallon(id) {
+    const updated = medallones.map(m => m.id === id ? { ...m, disponible: !m.disponible } : m);
+    setMedallones(updated);
+    try { await saveMenuFirestore({ burgers, guarniciones, extras, bebidas, acomp, envios, medallones: updated }); }
+    catch { alert("Error al guardar. Revisá tu conexión."); }
+  }
+
   async function guardarMenu() {
     setGuardando(true);
     try {
-      await saveMenuFirestore({ burgers, guarniciones, extras, bebidas, acomp, envios });
+      await saveMenuFirestore({ burgers, guarniciones, extras, bebidas, acomp, envios, medallones });
       setFlashOk(true); setTimeout(() => setFlashOk(false), 2500);
     } catch { alert("Error al guardar. Revisá tu conexión."); }
     finally { setGuardando(false); }
@@ -714,14 +1036,14 @@ export default function PaginaAdmin() {
   if (!logueado) return <Login onLogin={() => setLogueado(true)} />;
 
   const urlCliente = `${window.location.origin}/`;
-  const showGuardar = (tab >= 1 && tab <= 5) || tab === 6;
+  const showGuardar = (tab >= 1 && tab <= 4) || tab === 6 || tab === 7;
 
   return (
     <div style={G.page}>
       {/* Header */}
       <div style={G.header}>
         <div>
-          <div style={G.title}>🍔 Roses Burgers — Admin</div>
+          <div style={G.title}>🍔 Roses Burgers — Zona Sur</div>
           <div style={{ fontSize: 12, color: "#6ab88a", marginTop: 2 }}>Panel de pedidos online</div>
         </div>
         <button onClick={() => { localStorage.removeItem(LS_SESSION); setLogueado(false); }} style={{ ...G.btn("#ffffff22", "#fff"), fontSize: 12 }}>
@@ -828,9 +1150,10 @@ export default function PaginaAdmin() {
               {tab === 2 && <SeccionItems titulo="Guarniciones" icon="🍟" items={guarniciones} onUpdate={setGuarniciones} tipoFoto="guar" />}
               {tab === 3 && <SeccionItems titulo="Acompañamientos de burger" icon="🍟" items={acomp} onUpdate={setAcomp} />}
               {tab === 4 && <SeccionItems titulo="Extras para la burger" icon="➕" items={extras} onUpdate={setExtras} tipoFoto="extra" />}
-              {tab === 5 && <SeccionItems titulo="Bebidas" icon="🥤" items={bebidas} onUpdate={setBebidas} tipoFoto="bebida" />}
-              {tab === 6 && <SeccionEnvios envios={envios} onUpdate={setEnvios} />}
-              {tab === 7 && <MapaAdmin zona={zona} onGuardar={guardarZona} onLimpiar={async () => { setZona([]); await saveZonaFirestore([]); }} />}
+              {tab === 5 && <TabMedallon medallones={medallones} onToggle={toggleMedallon} />}
+              {tab === 6 && <SeccionItems titulo="Bebidas" icon="🥤" items={bebidas} onUpdate={setBebidas} tipoFoto="bebida" />}
+              {tab === 7 && <SeccionEnvios envios={envios} onUpdate={setEnvios} />}
+              {tab === 8 && <MapaAdmin zona={zona} onGuardar={guardarZona} onLimpiar={async () => { setZona([]); await saveZonaFirestore([]); }} />}
             </>
           )}
         </div>

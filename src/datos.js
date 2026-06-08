@@ -50,8 +50,13 @@ export const ACOMP_DEFAULT = [
   { id: "ac4", nombre: "Nuggets",           precio: 6000, disponible: true },
 ];
 
+export const MEDALLONES_DEFAULT = [
+  { id: "carne",       nombre: "Carne",       emoji: "🥩", disponible: true },
+  { id: "vegetariano", nombre: "Vegetariano", emoji: "🥦", disponible: true },
+];
+
 // ── Firestore: menú ───────────────────────────────────────────────
-const MENU_DOC = doc(db, "pedidos-online", "menu");
+const MENU_DOC = doc(db, "pedidos-online-zona-sur", "menu");
 
 export async function saveMenuFirestore(data) {
   await setDoc(MENU_DOC, {
@@ -61,13 +66,14 @@ export async function saveMenuFirestore(data) {
     bebidas:      JSON.stringify(data.bebidas),
     acomp:        JSON.stringify(data.acomp),
     envios:       JSON.stringify(data.envios),
+    medallones:   JSON.stringify(data.medallones),
   });
 }
 
 // Suscripción en tiempo real — llama a callback({ burgers, guarniciones, extras, bebidas })
 export function subscribeMenu(callback) {
   return onSnapshot(MENU_DOC, snap => {
-    if (!snap.exists()) { callback({ burgers: BURGERS_DEFAULT, guarniciones: GUARNICIONES_DEFAULT, extras: EXTRAS_DEFAULT, bebidas: BEBIDAS_DEFAULT, acomp: ACOMP_DEFAULT, envios: ENVIOS_DEFAULT }); return; }
+    if (!snap.exists()) { callback({ burgers: BURGERS_DEFAULT, guarniciones: GUARNICIONES_DEFAULT, extras: EXTRAS_DEFAULT, bebidas: BEBIDAS_DEFAULT, acomp: ACOMP_DEFAULT, envios: ENVIOS_DEFAULT, medallones: MEDALLONES_DEFAULT }); return; }
     const d = snap.data();
     callback({
       burgers:      safeJSON(d.burgers,      BURGERS_DEFAULT),
@@ -76,6 +82,7 @@ export function subscribeMenu(callback) {
       bebidas:      safeJSON(d.bebidas,      BEBIDAS_DEFAULT),
       acomp:        safeJSON(d.acomp,        ACOMP_DEFAULT),
       envios:       safeJSON(d.envios,       ENVIOS_DEFAULT),
+      medallones:   safeJSON(d.medallones,   MEDALLONES_DEFAULT),
     });
   });
 }
@@ -87,21 +94,21 @@ function safeJSON(str, fallback) {
 // ── Firebase Storage: fotos ───────────────────────────────────────
 // path: pedidos-fotos/{tipo}/{id}.jpg
 export async function uploadFoto(tipo, id, blob) {
-  const storageRef = ref(storage, `pedidos-fotos/${tipo}/${id}.jpg`);
+  const storageRef = ref(storage, `pedidos-fotos-zona-sur/${tipo}/${id}.jpg`);
   await uploadBytes(storageRef, blob, { contentType: "image/jpeg" });
   return await getDownloadURL(storageRef);
 }
 
 export async function deleteFotoStorage(tipo, id) {
   try {
-    const storageRef = ref(storage, `pedidos-fotos/${tipo}/${id}.jpg`);
+    const storageRef = ref(storage, `pedidos-fotos-zona-sur/${tipo}/${id}.jpg`);
     await deleteObject(storageRef);
   } catch {}
 }
 
 export async function getFotoURL(tipo, id) {
   try {
-    const storageRef = ref(storage, `pedidos-fotos/${tipo}/${id}.jpg`);
+    const storageRef = ref(storage, `pedidos-fotos-zona-sur/${tipo}/${id}.jpg`);
     return await getDownloadURL(storageRef);
   } catch { return null; }
 }
@@ -113,7 +120,7 @@ export function setFotoCache(tipo, id, url) { fotoCache[`${tipo}-${id}`] = url; 
 export function clearFotoCache(tipo, id) { delete fotoCache[`${tipo}-${id}`]; }
 
 // ── Estado (abierto/cerrado) ───────────────────────────────────────
-const ESTADO_DOC = doc(db, "pedidos-online", "estado");
+const ESTADO_DOC = doc(db, "pedidos-online-zona-sur", "estado");
 
 export async function saveEstado(data) {
   await setDoc(ESTADO_DOC, data, { merge: true });
@@ -131,7 +138,7 @@ export function subscribeEstado(callback) {
 }
 
 // ── Zona delivery ─────────────────────────────────────────────────
-const ZONA_DOC = doc(db, "pedidos-online", "zona");
+const ZONA_DOC = doc(db, "pedidos-online-zona-sur", "zona");
 export async function saveZonaFirestore(zona) { await setDoc(ZONA_DOC, { zona: JSON.stringify(zona) }); }
 export function subscribeZona(callback) {
   return onSnapshot(ZONA_DOC, snap => {
@@ -141,9 +148,9 @@ export function subscribeZona(callback) {
 }
 
 // ── Pedidos ───────────────────────────────────────────────────────
-const COUNTER_DOC  = doc(db, "pedidos-online", "contador");
-const PEDIDOS_COL  = collection(db, "pedidos");
-const CONFIG_DOC   = doc(db, "pedidos-online", "config");
+const COUNTER_DOC  = doc(db, "pedidos-online-zona-sur", "contador");
+const PEDIDOS_COL  = collection(db, "pedidos-zona-sur");
+const CONFIG_DOC   = doc(db, "pedidos-online-zona-sur", "config");
 
 export async function saveOrder(orderData) {
   // Contador + guardado del pedido dentro de la misma transacción atómica.
@@ -181,11 +188,15 @@ export function subscribePedidos(callback, onError) {
 }
 
 export async function updatePedidoEstado(id, estado) {
-  await setDoc(doc(db, "pedidos", id), { estado }, { merge: true });
+  await setDoc(doc(db, "pedidos-zona-sur", id), { estado }, { merge: true });
+}
+
+export async function marcarRendido(id) {
+  await setDoc(doc(db, "pedidos-zona-sur", id), { estado: "entregado", rendido: true }, { merge: true });
 }
 
 export async function marcarImpreso(id) {
-  await setDoc(doc(db, "pedidos", id), { impreso: true }, { merge: true });
+  await setDoc(doc(db, "pedidos-zona-sur", id), { impreso: true }, { merge: true });
 }
 
 export async function saveConfigImpresoras(config) {
@@ -195,6 +206,26 @@ export function subscribeConfig(callback) {
   return onSnapshot(CONFIG_DOC, snap => {
     if (!snap.exists()) { callback({ ipCocina: "", ipBarra: "" }); return; }
     callback(safeJSON(snap.data().impresoras, { ipCocina: "", ipBarra: "" }));
+  });
+}
+
+// ── Cadetes del día ───────────────────────────────────────────────
+const CADETES_DOC = doc(db, "pedidos-online-zona-sur", "cadetes");
+
+export async function saveCadetes(fecha, cadetes, asignaciones) {
+  await setDoc(CADETES_DOC, {
+    fecha,
+    cadetes:      JSON.stringify(cadetes),
+    asignaciones: JSON.stringify(asignaciones),
+  });
+}
+
+export function subscribeCadetes(callback) {
+  return onSnapshot(CADETES_DOC, snap => {
+    const hoy = new Date().toLocaleDateString("es-AR");
+    if (!snap.exists() || snap.data().fecha !== hoy) { callback({ cadetes: [], asignaciones: {} }); return; }
+    const d = snap.data();
+    callback({ cadetes: safeJSON(d.cadetes, []), asignaciones: safeJSON(d.asignaciones, {}) });
   });
 }
 

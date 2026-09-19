@@ -50,6 +50,11 @@ export const ACOMP_DEFAULT = [
   { id: "ac4", nombre: "Nuggets",           precio: 6000, disponible: true },
 ];
 
+export const MEDALLONES_DEFAULT = [
+  { id: "carne",       nombre: "Carne",       emoji: "🥩", disponible: true },
+  { id: "vegetariano", nombre: "Vegetariano", emoji: "🥦", disponible: true },
+];
+
 // ── Firestore: menú ───────────────────────────────────────────────
 const MENU_DOC = doc(db, "pedidos-online", "menu");
 
@@ -61,13 +66,14 @@ export async function saveMenuFirestore(data) {
     bebidas:      JSON.stringify(data.bebidas),
     acomp:        JSON.stringify(data.acomp),
     envios:       JSON.stringify(data.envios),
+    medallones:   JSON.stringify(data.medallones),
   });
 }
 
 // Suscripción en tiempo real — llama a callback({ burgers, guarniciones, extras, bebidas })
 export function subscribeMenu(callback) {
   return onSnapshot(MENU_DOC, snap => {
-    if (!snap.exists()) { callback({ burgers: BURGERS_DEFAULT, guarniciones: GUARNICIONES_DEFAULT, extras: EXTRAS_DEFAULT, bebidas: BEBIDAS_DEFAULT, acomp: ACOMP_DEFAULT, envios: ENVIOS_DEFAULT }); return; }
+    if (!snap.exists()) { callback({ burgers: BURGERS_DEFAULT, guarniciones: GUARNICIONES_DEFAULT, extras: EXTRAS_DEFAULT, bebidas: BEBIDAS_DEFAULT, acomp: ACOMP_DEFAULT, envios: ENVIOS_DEFAULT, medallones: MEDALLONES_DEFAULT }); return; }
     const d = snap.data();
     callback({
       burgers:      safeJSON(d.burgers,      BURGERS_DEFAULT),
@@ -76,6 +82,7 @@ export function subscribeMenu(callback) {
       bebidas:      safeJSON(d.bebidas,      BEBIDAS_DEFAULT),
       acomp:        safeJSON(d.acomp,        ACOMP_DEFAULT),
       envios:       safeJSON(d.envios,       ENVIOS_DEFAULT),
+      medallones:   safeJSON(d.medallones,   MEDALLONES_DEFAULT),
     });
   });
 }
@@ -195,6 +202,26 @@ export function subscribeConfig(callback) {
   return onSnapshot(CONFIG_DOC, snap => {
     if (!snap.exists()) { callback({ ipCocina: "", ipBarra: "" }); return; }
     callback(safeJSON(snap.data().impresoras, { ipCocina: "", ipBarra: "" }));
+  });
+}
+
+// ── Cadetes del día ───────────────────────────────────────────────
+const CADETES_DOC = doc(db, "pedidos-online", "cadetes");
+
+export async function saveCadetes(fecha, cadetes, asignaciones) {
+  await setDoc(CADETES_DOC, {
+    fecha,
+    cadetes:      JSON.stringify(cadetes),
+    asignaciones: JSON.stringify(asignaciones),
+  });
+}
+
+export function subscribeCadetes(callback) {
+  return onSnapshot(CADETES_DOC, snap => {
+    const hoy = new Date().toLocaleDateString("es-AR");
+    if (!snap.exists() || snap.data().fecha !== hoy) { callback({ cadetes: [], asignaciones: {} }); return; }
+    const d = snap.data();
+    callback({ cadetes: safeJSON(d.cadetes, []), asignaciones: safeJSON(d.asignaciones, {}) });
   });
 }
 

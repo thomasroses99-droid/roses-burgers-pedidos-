@@ -50,30 +50,12 @@ function printToWindows(name, buffer) {
     const tmp = path.join(os.tmpdir(), `rp_${id}.prn`);
     const ps1 = path.join(os.tmpdir(), `rp_${id}.ps1`);
 
-    // Intenta primero escribir directo al puerto USB (bypasea el driver).
-    // Si falla, cae al método RAW via winspool.
     const script =
 `param($printer, $datafile)
 $ErrorActionPreference = 'Stop'
 $bytes = [IO.File]::ReadAllBytes($datafile)
 
-# Metodo 1: puerto directo (bypasea driver - mas confiable para termicas USB)
-try {
-  $p = Get-WmiObject Win32_Printer -Filter "Name='$printer'"
-  if ($p -and $p.PortName -match '^USB') {
-    $port = $p.PortName
-    $stream = [IO.File]::Open("\\\\.\\" + $port, [IO.FileMode]::Open, [IO.FileAccess]::Write, [IO.FileShare]::ReadWrite)
-    $stream.Write($bytes, 0, $bytes.Length)
-    $stream.Flush()
-    $stream.Close()
-    Write-Output "OK-puerto:$port"
-    exit 0
-  }
-} catch {
-  Write-Output "WARN puerto directo: $($_.Exception.Message)"
-}
-
-# Metodo 2: RAW via winspool.drv
+# RAW via winspool.drv
 $code = 'using System; using System.Runtime.InteropServices; public class WRP { [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] public class DOCINFO { [MarshalAs(UnmanagedType.LPWStr)] public string pDocName; [MarshalAs(UnmanagedType.LPWStr)] public string pOutputFile; [MarshalAs(UnmanagedType.LPWStr)] public string pDataType; } [DllImport("winspool.drv",CharSet=CharSet.Unicode)] public static extern bool OpenPrinter(string n, out IntPtr h, IntPtr p); [DllImport("winspool.drv")] public static extern bool ClosePrinter(IntPtr h); [DllImport("winspool.drv",CharSet=CharSet.Unicode)] public static extern int StartDocPrinter(IntPtr h, int l, DOCINFO d); [DllImport("winspool.drv")] public static extern bool EndDocPrinter(IntPtr h); [DllImport("winspool.drv")] public static extern bool StartPagePrinter(IntPtr h); [DllImport("winspool.drv")] public static extern bool EndPagePrinter(IntPtr h); [DllImport("winspool.drv")] public static extern bool WritePrinter(IntPtr h, byte[] b, int n, out int w); }'
 Add-Type -TypeDefinition $code -Language CSharp
 $h = [IntPtr]::Zero

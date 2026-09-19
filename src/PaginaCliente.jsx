@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   subscribeMenu, subscribeZona, subscribeEstado,
   getFotoURL, getFotoCached, setFotoCache,
-  saveOrder, fmt,
+  saveOrder, fmt, MEDALLONES_DEFAULT,
 } from "./datos.js";
 
 function parseMins(hhmm) {
@@ -16,9 +16,44 @@ function dentroDeHorario(horaDesde, horaHasta) {
 }
 
 const WA_NUMBER = "543417408076";
-const GD = "#1a3a25"; // verde oscuro
-const G  = "#1a7a3a"; // verde medio
-const GL = "#e8f5ec"; // verde claro
+const GD = "#1F1F1F"; // negro principal
+const G  = "#152F24"; // verde oscuro (brand)
+const GL = "#F0EADA"; // cream (brand)
+const BR = "#7F350A"; // marrón acento (brand)
+const HEAD = "'Barlow Condensed', sans-serif";
+const BODY = "'Barlow', sans-serif";
+
+// ── Promo Lun-Jue efectivo ─────────────────────────────────────────
+const PROMO_SIMPLE = 12000;
+const PROMO_DOBLE  = 14000;
+function esHotSale() {
+  const h = new Date(); const y = h.getFullYear(), m = h.getMonth()+1, d = h.getDate();
+  return y === 2026 && m === 5 && d >= 11 && d <= 13;
+}
+function esDiaPromo() {
+  const d = new Date().getDay(); // 0=Dom, 1=Lun, …, 4=Jue
+  return esHotSale() || (d >= 1 && d <= 4);
+}
+function itemCalificaPromo(item) {
+  return item.tipo === "burger" &&
+    (item.tamano === "Simple" || item.tamano === "Doble") &&
+    item.acomp?.nombre?.toLowerCase().includes("papa");
+}
+function precioConPromo(item) {
+  if (!itemCalificaPromo(item)) return item.precio;
+  if (esHotSale()) return item.tamano === "Simple" ? 11000 : 12500;
+  return item.tamano === "Simple" ? PROMO_SIMPLE : PROMO_DOBLE;
+}
+
+// ── Descuento especial de un solo día (20% en todos los medios de pago) ──
+const DESCUENTO_HOY_PCT = 0.20;
+function esDescuentoHoy() {
+  const h = new Date(); const y = h.getFullYear(), m = h.getMonth() + 1, d = h.getDate();
+  return y === 2026 && m === 7 && d === 7;
+}
+function precioConDescuentoHoy(item) {
+  return Math.round(item.precio * (1 - DESCUENTO_HOY_PCT));
+}
 
 
 const BURGER_IMGS = {
@@ -106,9 +141,10 @@ function MapaCliente({ coords, zona }) {
 }
 
 // ── Modal personalización burger ──────────────────────────────────
-function ModalBurger({ burger, fotoUrl, extras, acompList, fotoExtras, onAgregar, onCerrar }) {
+function ModalBurger({ burger, fotoUrl, extras, acompList, fotoExtras, medallones, onAgregar, onCerrar }) {
+  const disponiblesMedallon = medallones.filter(m => m.disponible);
   const [tamano, setTamano]     = useState("simple");
-  const [medallon, setMedallon] = useState("carne");
+  const [medallon, setMedallon] = useState(() => disponiblesMedallon[0]?.id || "carne");
   const [acomp, setAcomp]       = useState(null);
   const [extrasEleg, setExtrasEleg] = useState([]);
   const [aclaracion, setAclaracion] = useState("");
@@ -132,7 +168,7 @@ function ModalBurger({ burger, fotoUrl, extras, acompList, fotoExtras, onAgregar
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "#0007", zIndex: 500, display: "flex", alignItems: "flex-end" }} onClick={onCerrar}>
-      <div style={{ background: "#fff", borderRadius: "22px 22px 0 0", width: "100%", maxWidth: 480, margin: "0 auto", maxHeight: "92vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: "#FDFAF5", borderRadius: "22px 22px 0 0", width: "100%", maxWidth: 480, margin: "0 auto", maxHeight: "92vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
         {/* Foto */}
         {fotoUrl
           ? <img src={fotoUrl} style={{ width: "100%", height: 210, objectFit: "cover" }} />
@@ -141,8 +177,8 @@ function ModalBurger({ burger, fotoUrl, extras, acompList, fotoExtras, onAgregar
         <div style={{ padding: "18px 20px 36px" }}>
           {/* Nombre + tag */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-            <span style={{ fontSize: 20, fontWeight: 900, color: GD }}>{burger.nombre}</span>
-            {burger.tag && <span style={{ background: burger.tag === "NUEVA" ? G : "#8b2e10", color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4 }}>{burger.tag}</span>}
+            <span style={{ fontSize: 22, fontWeight: 900, color: GD, fontFamily: HEAD, letterSpacing: 1 }}>{burger.nombre}</span>
+            {burger.tag && <span style={{ background: burger.tag === "NUEVA" ? G : BR, color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4 }}>{burger.tag}</span>}
           </div>
           <div style={{ fontSize: 13, color: "#888", marginBottom: 22, lineHeight: 1.5 }}>{burger.desc}</div>
 
@@ -150,7 +186,7 @@ function ModalBurger({ burger, fotoUrl, extras, acompList, fotoExtras, onAgregar
           <Bloque titulo="TAMAÑO">
             <div style={{ display: "flex", gap: 8 }}>
               {tamanos.map(t => (
-                <button key={t.key} onClick={() => setTamano(t.key)} style={{ flex: 1, padding: "12px 4px", borderRadius: 12, border: `2px solid ${tamano === t.key ? G : "#e0e0e0"}`, background: tamano === t.key ? GL : "#fff", cursor: "pointer", textAlign: "center" }}>
+                <button key={t.key} onClick={() => setTamano(t.key)} style={{ flex: 1, padding: "12px 4px", borderRadius: 12, border: `2px solid ${tamano === t.key ? G : "#D4CEC6"}`, background: tamano === t.key ? GL : "#fff", cursor: "pointer", textAlign: "center" }}>
                   <div style={{ fontWeight: 800, fontSize: 14, color: tamano === t.key ? GD : "#555" }}>{t.label}</div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: tamano === t.key ? G : "#aaa", marginTop: 2 }}>{fmt(t.precio)}</div>
                 </button>
@@ -159,16 +195,18 @@ function ModalBurger({ burger, fotoUrl, extras, acompList, fotoExtras, onAgregar
           </Bloque>
 
           {/* Medallón */}
-          <Bloque titulo="MEDALLÓN">
-            <div style={{ display: "flex", gap: 8 }}>
-              {[{ key: "carne", label: "🥩 Carne" }, { key: "vegetariano", label: "🥦 Vegetariano" }].map(op => (
-                <button key={op.key} onClick={() => setMedallon(op.key)}
-                  style={{ flex: 1, padding: "12px 4px", borderRadius: 12, border: `2px solid ${medallon === op.key ? G : "#e0e0e0"}`, background: medallon === op.key ? GL : "#fff", cursor: "pointer", textAlign: "center" }}>
-                  <div style={{ fontWeight: 800, fontSize: 14, color: medallon === op.key ? GD : "#555" }}>{op.label}</div>
-                </button>
-              ))}
-            </div>
-          </Bloque>
+          {disponiblesMedallon.length > 0 && (
+            <Bloque titulo="MEDALLÓN">
+              <div style={{ display: "flex", gap: 8 }}>
+                {disponiblesMedallon.map(op => (
+                  <button key={op.id} onClick={() => setMedallon(op.id)}
+                    style={{ flex: 1, padding: "12px 4px", borderRadius: 12, border: `2px solid ${medallon === op.id ? G : "#D4CEC6"}`, background: medallon === op.id ? GL : "#fff", cursor: "pointer", textAlign: "center" }}>
+                    <div style={{ fontWeight: 800, fontSize: 14, color: medallon === op.id ? GD : "#555" }}>{op.emoji} {op.nombre}</div>
+                  </button>
+                ))}
+              </div>
+            </Bloque>
+          )}
 
           {/* Acompañamiento combo */}
           {acompList.filter(a => a.disponible).length > 0 && (
@@ -203,10 +241,10 @@ function ModalBurger({ burger, fotoUrl, extras, acompList, fotoExtras, onAgregar
           </Bloque>
 
           {/* Total + botón */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 16, borderTop: "1px solid #eee" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 16, borderTop: "1px solid #d8d2c8" }}>
             <div>
               <div style={{ fontSize: 11, color: "#aaa" }}>Total</div>
-              <div style={{ fontSize: 24, fontWeight: 900, color: GD }}>{fmt(total)}</div>
+              <div style={{ fontSize: 26, fontWeight: 900, color: GD, fontFamily: HEAD }}>{fmt(total)}</div>
             </div>
             <button onClick={agregar} style={{ background: G, border: "none", borderRadius: 14, padding: "15px 28px", fontWeight: 900, fontSize: 16, color: "#fff", cursor: "pointer" }}>
               Agregar al pedido
@@ -273,10 +311,14 @@ function PantallaCheckout({ carrito, onQuitar, tipo, setTipo, zona, envios, onCo
     }, 1000);
   }
 
-  const subtotal   = carrito.reduce((s, i) => s + i.precio, 0);
+  const descuentoHoy = esDescuentoHoy();
+  const promoActiva = !descuentoHoy && esDiaPromo() && pago === "Efectivo";
+  const precioItem = i => descuentoHoy ? precioConDescuentoHoy(i) : (promoActiva ? precioConPromo(i) : i.precio);
+  const subtotal   = carrito.reduce((s, i) => s + precioItem(i), 0);
   const envioObj   = envios?.find(e => e.id === localidad);
   const costoEnvio = tipo === "delivery" && envioObj ? envioObj.precio : 0;
   const total      = subtotal + costoEnvio;
+  const ahorroPromo = (promoActiva || descuentoHoy) ? carrito.reduce((s, i) => s + (i.precio - precioItem(i)), 0) : 0;
 
   useEffect(() => {
     if (tipo !== "delivery" || dir.trim().length < 8) { setCoords(null); setGeoSt(null); return; }
@@ -296,27 +338,35 @@ function PantallaCheckout({ carrito, onQuitar, tipo, setTipo, zona, envios, onCo
   // geoSt debe ser "ok" o "err" (geocoding corrió) — nunca null (no corrió) ni "buscando" ni "fuera"
   const valido = nombre.trim() && telefono.trim() && pago && (tipo === "retiro" || ((geoSt === "ok" || geoSt === "err") && localidad));
 
-  const inp = { width: "100%", border: "1.5px solid #e0e0e0", borderRadius: 12, padding: "14px 16px", fontSize: 15, outline: "none", background: "#fff", boxSizing: "border-box", color: "#1a1a1a" };
+  const inp = { width: "100%", border: "1.5px solid #D4CEC6", borderRadius: 12, padding: "14px 16px", fontSize: 15, outline: "none", background: "#FDFAF5", boxSizing: "border-box", color: GD };
 
   return (
     <div style={{ paddingBottom: 100 }}>
       <div style={{ padding: "20px 16px 0" }}>
         {/* Resumen */}
         <div style={{ fontSize: 13, fontWeight: 800, color: G, letterSpacing: 1, textTransform: "uppercase", marginBottom: 12 }}>Tu pedido</div>
-        {carrito.map(item => (
-          <div key={item.cartId} style={{ background: "#fff", borderRadius: 12, padding: "12px 14px", marginBottom: 8, display: "flex", alignItems: "flex-start", gap: 10, boxShadow: "0 1px 4px #0001" }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: GD }}>
-                {item.tipo === "burger" ? "🍔" : item.tipo === "guar" ? "🍟" : "🥤"} {item.nombre}
-                {item.tamano && <span style={{ fontWeight: 400, color: "#999", fontSize: 13 }}> · {item.tamano}</span>}
+        {carrito.map(item => {
+          const pConPromo = precioItem(item);
+          const tieneDesc = descuentoHoy || (promoActiva && itemCalificaPromo(item));
+          return (
+            <div key={item.cartId} style={{ background: "#FDFAF5", borderRadius: 12, padding: "12px 14px", marginBottom: 8, display: "flex", alignItems: "flex-start", gap: 10, boxShadow: "0 1px 4px #0001", border: tieneDesc ? `1.5px solid ${G}` : "none" }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: GD }}>
+                  {item.tipo === "burger" ? "🍔" : item.tipo === "guar" ? "🍟" : "🥤"} {item.nombre}
+                  {item.tamano && <span style={{ fontWeight: 400, color: "#999", fontSize: 13 }}> · {item.tamano}</span>}
+                  {tieneDesc && <span style={{ marginLeft: 6, background: G, color: "#fff", fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 4 }}>{descuentoHoy ? "-20%" : "PROMO"}</span>}
+                </div>
+                {item.acomp && <div style={{ fontSize: 12, color: "#aaa", marginTop: 2 }}>+ {item.acomp.nombre}</div>}
+                {item.extras?.map(e => <div key={e.id} style={{ fontSize: 12, color: "#aaa" }}>+ {e.nombre}</div>)}
               </div>
-              {item.guarnicion && <div style={{ fontSize: 12, color: "#aaa", marginTop: 2 }}>+ {item.guarnicion.nombre}</div>}
-              {item.extras?.map(e => <div key={e.id} style={{ fontSize: 12, color: "#aaa" }}>+ {e.nombre}</div>)}
+              <div style={{ textAlign: "right" }}>
+                {tieneDesc && <div style={{ fontSize: 11, color: "#bbb", textDecoration: "line-through" }}>{fmt(item.precio)}</div>}
+                <div style={{ fontWeight: 700, color: tieneDesc ? G : G, fontSize: 14 }}>{fmt(pConPromo)}</div>
+              </div>
+              <button onClick={() => onQuitar(item.cartId)} style={{ background: "transparent", border: "none", color: "#ccc", fontSize: 20, cursor: "pointer", lineHeight: 1, padding: 0 }}>×</button>
             </div>
-            <div style={{ fontWeight: 700, color: G, fontSize: 14 }}>{fmt(item.precio)}</div>
-            <button onClick={() => onQuitar(item.cartId)} style={{ background: "transparent", border: "none", color: "#ccc", fontSize: 20, cursor: "pointer", lineHeight: 1, padding: 0 }}>×</button>
-          </div>
-        ))}
+          );
+        })}
         <div style={{ paddingTop: 8, marginBottom: 24 }}>
           {tipo === "delivery" && costoEnvio > 0 && (
             <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginBottom: 4 }}>
@@ -334,6 +384,12 @@ function PantallaCheckout({ carrito, onQuitar, tipo, setTipo, zona, envios, onCo
             <span style={{ color: "#aaa", fontSize: 14 }}>Total:</span>
             <span style={{ fontWeight: 900, fontSize: 22, color: GD }}>{fmt(total)}</span>
           </div>
+          {(promoActiva || descuentoHoy) && ahorroPromo > 0 && (
+            <div style={{ marginTop: 8, padding: "8px 12px", background: GL, border: `1px solid ${G}`, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 12, color: GD, fontWeight: 700 }}>{descuentoHoy ? "🎉 20% OFF de hoy aplicado" : "🔥 Promo efectivo Lun-Jue aplicada"}</span>
+              <span style={{ fontSize: 13, fontWeight: 900, color: G }}>-{fmt(ahorroPromo)}</span>
+            </div>
+          )}
         </div>
 
         {/* Toggle */}
@@ -357,7 +413,7 @@ function PantallaCheckout({ carrito, onQuitar, tipo, setTipo, zona, envios, onCo
             <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
               {(envios || []).map(env => (
                 <button key={env.id} onClick={() => setLocalidad(env.id)}
-                  style={{ flex: 1, padding: "13px 8px", borderRadius: 12, border: `2px solid ${localidad === env.id ? G : "#e0e0e0"}`, background: localidad === env.id ? GL : "#fff", cursor: "pointer", textAlign: "center" }}>
+                  style={{ flex: 1, padding: "13px 8px", borderRadius: 12, border: `2px solid ${localidad === env.id ? G : "#D4CEC6"}`, background: localidad === env.id ? GL : "#fff", cursor: "pointer", textAlign: "center" }}>
                   <div style={{ fontWeight: 800, fontSize: 14, color: localidad === env.id ? GD : "#555" }}>{env.nombre}</div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: localidad === env.id ? G : "#aaa", marginTop: 2 }}>Envío {fmt(env.precio)}</div>
                 </button>
@@ -376,7 +432,7 @@ function PantallaCheckout({ carrito, onQuitar, tipo, setTipo, zona, envios, onCo
 
         <label style={{ fontSize: 12, color: "#aaa", display: "block", marginBottom: 8 }}>Método de pago *</label>
         <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-          {["Efectivo", "Transferencia", "Link de pago"].map(op => (
+          {["Efectivo", "Transferencia"].map(op => (
             <button key={op} onClick={() => setPago(op)} style={{ flex: 1, padding: "12px 4px", borderRadius: 10, border: `1.5px solid ${pago === op ? G : "#e0e0e0"}`, background: pago === op ? GL : "#fff", color: pago === op ? GD : "#aaa", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
               {op}
             </button>
@@ -387,7 +443,7 @@ function PantallaCheckout({ carrito, onQuitar, tipo, setTipo, zona, envios, onCo
         <textarea style={{ ...inp, resize: "vertical", minHeight: 70 }} placeholder="Sin cebolla, extra picante..." value={notas} onChange={e => setNotas(e.target.value)} />
       </div>
 
-      <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, background: "#fff", borderTop: "1px solid #eee", padding: "12px 16px" }}>
+      <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, background: "#FDFAF5", borderTop: "1px solid #d8d2c8", padding: "12px 16px" }}>
         {errorWa && (
           <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 12, padding: "12px 14px", marginBottom: 10, textAlign: "center" }}>
             <div style={{ fontWeight: 700, color: "#991b1b", fontSize: 14, marginBottom: 6 }}>⚠️ Hubo un problema al registrar el pedido</div>
@@ -404,7 +460,7 @@ function PantallaCheckout({ carrito, onQuitar, tipo, setTipo, zona, envios, onCo
               setGuardando(true);
               try {
                 setErrorWa(null);
-                const result = await onConfirmar({ nombre, telefono, dir, localidad, costoEnvio, localidadNombre: envioObj?.nombre || "", tipo, pago, notas, coords });
+                const result = await onConfirmar({ nombre, telefono, dir, localidad, costoEnvio, localidadNombre: envioObj?.nombre || "", tipo, pago, notas, coords, promoActiva });
                 onExito(result);
               } catch (e) {
                 if (e.waUrl) setErrorWa(e.waUrl);
@@ -438,6 +494,9 @@ export default function PaginaCliente() {
   const [tipo, setTipo]             = useState("delivery");
   const [cantSueltas, setCant]      = useState({});
   const [confirmado, setConfirmado] = useState(null); // { waUrl, numeroPedido }
+  const [showHotSale, setShowHotSale] = useState(esHotSale());
+  const [showDescuentoHoy, setShowDescuentoHoy] = useState(esDescuentoHoy());
+  const [showBanner, setShowBanner]   = useState(!esHotSale() && !esDescuentoHoy() && esDiaPromo());
 
   useEffect(() => {
     const u1 = subscribeMenu(d => setMenu(d));
@@ -474,19 +533,25 @@ export default function PaginaCliente() {
     if (nuevos.length) { setCarrito(p => [...p, ...nuevos]); setCant({}); }
   }
 
-  async function confirmarPedido({ nombre, telefono, dir, localidad, costoEnvio, localidadNombre, tipo: t, pago, notas, coords }) {
-    const subtotal = carrito.reduce((s, i) => s + i.precio, 0);
+  async function confirmarPedido({ nombre, telefono, dir, localidad, costoEnvio, localidadNombre, tipo: t, pago, notas, coords, promoActiva }) {
+    const descuentoHoy = esDescuentoHoy();
+    const precioItem = i => descuentoHoy ? precioConDescuentoHoy(i) : (promoActiva ? precioConPromo(i) : i.precio);
+    const subtotal = carrito.reduce((s, i) => s + precioItem(i), 0);
     const totalFinal = subtotal + (costoEnvio || 0);
     const lineas = [`🍔 *NUEVO PEDIDO - Roses Burgers*`, ""];
+    if (descuentoHoy) lineas.push("🎉 *20% OFF DE HOY - TODOS LOS MEDIOS DE PAGO*", "");
+    else if (promoActiva) lineas.push("🔥 *PROMO EFECTIVO LUN-JUE*", "");
     lineas.push("📋 *DETALLE:*");
     carrito.forEach(item => {
+      const precio = precioItem(item);
       if (item.tipo === "burger") {
-        lineas.push(`• 🍔 ${item.nombre} (${item.tamano}) — ${fmt(item.precio)}`);
+        const esPromo = descuentoHoy || (promoActiva && itemCalificaPromo(item));
+        lineas.push(`• 🍔 ${item.nombre} (${item.tamano}) — ${fmt(precio)}${esPromo ? (descuentoHoy ? " 🎉-20%" : " 🔥PROMO") : ""}`);
         lineas.push(`   ↳ Medallón: ${item.medallon === "vegetariano" ? "🥦 Vegetariano" : "🥩 Carne"}`);
         if (item.acomp) lineas.push(`   ↳ + ${item.acomp.nombre}`);
         if (item.extras?.length) lineas.push(`   ↳ Extras: ${item.extras.map(e => e.nombre).join(", ")}`);
         if (item.aclaracion) lineas.push(`   ↳ Aclaración: ${item.aclaracion}`);
-      } else { lineas.push(`• ${item.tipo === "guar" ? "🍟" : "🥤"} ${item.nombre} — ${fmt(item.precio)}`); }
+      } else { lineas.push(`• ${item.tipo === "guar" ? "🍟" : "🥤"} ${item.nombre} — ${fmt(precio)}`); }
     });
     lineas.push("", `👤 *Cliente:* ${nombre}`);
     lineas.push(`📱 *Teléfono:* ${telefono}`);
@@ -510,8 +575,10 @@ export default function PaginaCliente() {
       tipo: t,
       pago,
       notas: notas || "",
-      items: carrito,
+      items: carrito.map(i => (descuentoHoy || promoActiva) ? { ...i, precio: precioItem(i) } : i),
       total: totalFinal,
+      ...(descuentoHoy ? { descuentoHoyAplicado: true } : {}),
+      ...(promoActiva ? { promoAplicada: true } : {}),
       ...(coords ? { lat: coords.lat, lng: coords.lng } : {}),
     };
 
@@ -573,7 +640,7 @@ export default function PaginaCliente() {
   );
 
   if (!menu) return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#f6f6f6", gap: 16 }}>
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: GL, gap: 16 }}>
       <div style={{ fontSize: 52 }}>🍔</div>
       <div style={{ color: "#aaa", fontSize: 15 }}>Cargando menú...</div>
     </div>
@@ -595,18 +662,83 @@ export default function PaginaCliente() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f6f6f6", fontFamily: "'Segoe UI', system-ui, sans-serif", maxWidth: 480, margin: "0 auto", position: "relative" }}>
+    <div style={{ minHeight: "100vh", background: GL, fontFamily: BODY, maxWidth: 480, margin: "0 auto", position: "relative" }}>
+
+      {/* ── BANNER HOT SALE ── */}
+      {showHotSale && (
+        <div style={{ position: "fixed", inset: 0, background: "#000", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setShowHotSale(false)}>
+          <div style={{ position: "relative", width: "100%", maxWidth: 480, height: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}
+            onClick={e => e.stopPropagation()}>
+            <img src="/images/hot-roses.jpg" alt="Hot Roses" style={{ width: "100%", maxHeight: "100vh", objectFit: "contain" }} />
+            <button onClick={() => setShowHotSale(false)}
+              style={{ position: "absolute", bottom: 28, left: "50%", transform: "translateX(-50%)", background: "#cc0000", border: "none", borderRadius: 14, padding: "16px 48px", fontWeight: 900, fontSize: 16, color: "#fff", cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 4px 20px #0006" }}>
+              ¡Ver menú!
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── BANNER 20% OFF DE HOY ── */}
+      {showDescuentoHoy && (
+        <div style={{ position: "fixed", inset: 0, background: "#000b", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 20px" }}
+          onClick={() => setShowDescuentoHoy(false)}>
+          <div style={{ background: "#FDFAF5", borderRadius: 24, padding: "32px 28px", width: "100%", maxWidth: 380, textAlign: "center", boxShadow: "0 20px 60px #0005" }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 44, marginBottom: 8 }}>🎉</div>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 3, color: G, textTransform: "uppercase", marginBottom: 4 }}>Solo por hoy</div>
+            <div style={{ fontSize: 32, fontWeight: 900, color: GD, fontFamily: HEAD, lineHeight: 1.1, marginBottom: 4, letterSpacing: 2 }}>20% OFF</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#888", marginBottom: 24 }}>En todo el pedido · Cualquier medio de pago</div>
+            <button onClick={() => setShowDescuentoHoy(false)}
+              style={{ background: G, border: "none", borderRadius: 14, padding: "16px 48px", fontWeight: 900, fontSize: 16, color: "#fff", cursor: "pointer", whiteSpace: "nowrap", width: "100%" }}>
+              ¡Pedir ahora!
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── BANNER PROMO LUN-JUE ── */}
+      {showBanner && (
+        <div style={{ position: "fixed", inset: 0, background: "#000b", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 20px" }}
+          onClick={() => setShowBanner(false)}>
+          <div style={{ background: "#FDFAF5", borderRadius: 24, padding: "32px 28px", width: "100%", maxWidth: 380, textAlign: "center", boxShadow: "0 20px 60px #0005" }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 44, marginBottom: 8 }}>🔥</div>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 3, color: G, textTransform: "uppercase", marginBottom: 4 }}>Promo especial</div>
+            <div style={{ fontSize: 32, fontWeight: 900, color: GD, fontFamily: HEAD, lineHeight: 1.1, marginBottom: 4, letterSpacing: 2 }}>EFECTIVO</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#888", marginBottom: 24 }}>Lunes a Jueves · Solo en efectivo</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
+              <div style={{ background: GL, border: `2px solid ${G}`, borderRadius: 16, padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ textAlign: "left" }}>
+                  <div style={{ fontWeight: 900, fontSize: 16, color: GD }}>Combo Simple</div>
+                  <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Burger simple + papas fritas</div>
+                </div>
+                <div style={{ fontWeight: 900, fontSize: 22, color: G }}>$12.000</div>
+              </div>
+              <div style={{ background: GL, border: `2px solid ${G}`, borderRadius: 16, padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ textAlign: "left" }}>
+                  <div style={{ fontWeight: 900, fontSize: 16, color: GD }}>Combo Doble</div>
+                  <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Burger doble + papas fritas</div>
+                </div>
+                <div style={{ fontWeight: 900, fontSize: 22, color: G }}>$14.000</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 12, color: "#aaa", marginBottom: 20 }}>Válido para cualquier hamburguesa de la carta<br />abonando en efectivo</div>
+            <button onClick={() => setShowBanner(false)}
+              style={{ width: "100%", background: GD, border: "none", borderRadius: 14, padding: "16px", fontWeight: 900, fontSize: 16, color: "#fff", cursor: "pointer" }}>
+              ¡Ver menú!
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── HEADER ── */}
-      <div style={{ background: "#fff", padding: "14px 16px 0", boxShadow: "0 1px 0 #eee", position: "sticky", top: 0, zIndex: 100 }}>
-        {/* Fila logo */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 42, height: 42, borderRadius: "50%", background: GD, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>🍔</div>
-            <span style={{ fontWeight: 900, fontSize: 18, color: GD }}>Roses Burgers</span>
-          </div>
+      <div style={{ background: GL, position: "sticky", top: 0, zIndex: 100, boxShadow: "0 2px 8px #0001" }}>
+        {/* Logo banner */}
+        <div style={{ position: "relative", height: 185, overflow: "hidden", background: GL }}>
+          <img src="/images/roses-logo.jpg" alt="Roses" style={{ width: "100%", display: "block", marginTop: "-135px" }} />
           {pantalla === "checkout" && (
-            <button onClick={() => setPant("menu")} style={{ background: "transparent", border: `1.5px solid ${G}`, borderRadius: 8, padding: "6px 14px", color: G, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+            <button onClick={() => setPant("menu")} style={{ position: "absolute", top: "50%", left: 14, transform: "translateY(-50%)", background: "rgba(0,0,0,0.55)", border: "none", borderRadius: 8, padding: "7px 14px", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
               ← Volver
             </button>
           )}
@@ -614,9 +746,9 @@ export default function PaginaCliente() {
 
         {/* Toggle Delivery / Retiro */}
         {pantalla === "menu" && (
-          <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+          <div style={{ display: "flex", gap: 10, padding: "12px 14px 0" }}>
             {[["delivery", "🛵 Delivery"], ["retiro", "🏠 Retiro"]].map(([v, l]) => (
-              <button key={v} onClick={() => setTipo(v)} style={{ flex: 1, padding: "12px", borderRadius: 12, border: `2px solid ${tipo === v ? GD : "#e0e0e0"}`, background: tipo === v ? GD : "#fff", color: tipo === v ? "#fff" : "#888", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>
+              <button key={v} onClick={() => setTipo(v)} style={{ flex: 1, padding: "11px", borderRadius: 10, border: `2px solid ${tipo === v ? GD : "#c8c2b8"}`, background: tipo === v ? GD : "transparent", color: tipo === v ? GL : "#888", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
                 {l}
               </button>
             ))}
@@ -625,9 +757,9 @@ export default function PaginaCliente() {
 
         {/* Tabs categorías */}
         {pantalla === "menu" && (
-          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 14, scrollbarWidth: "none" }}>
+          <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "10px 14px 12px", scrollbarWidth: "none" }}>
             {CATS.map(c => (
-              <button key={c.key} onClick={() => setCat(c.key)} style={{ padding: "8px 18px", borderRadius: 20, border: `1.5px solid ${cat === c.key ? G : "#e0e0e0"}`, background: cat === c.key ? G : "#fff", color: cat === c.key ? "#fff" : "#666", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+              <button key={c.key} onClick={() => setCat(c.key)} style={{ padding: "7px 16px", borderRadius: 20, border: `1.5px solid ${cat === c.key ? GD : "#c8c2b8"}`, background: cat === c.key ? GD : "transparent", color: cat === c.key ? GL : "#888", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
                 {c.label}
               </button>
             ))}
@@ -639,7 +771,7 @@ export default function PaginaCliente() {
       {pantalla === "confirmado" ? (
         <div style={{ minHeight: "70vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 24px", textAlign: "center" }}>
           <div style={{ fontSize: 64, marginBottom: 16 }}>✅</div>
-          <div style={{ fontSize: 24, fontWeight: 900, color: GD, marginBottom: 8 }}>¡Pedido registrado!</div>
+          <div style={{ fontSize: 26, fontWeight: 900, color: GD, fontFamily: HEAD, marginBottom: 8 }}>¡Pedido registrado!</div>
           {confirmado?.numeroPedido && <div style={{ fontSize: 16, color: "#555", marginBottom: 4 }}>Tu número de pedido es el <strong style={{ color: GD }}>#{confirmado.numeroPedido}</strong></div>}
           <div style={{ fontSize: 14, color: "#888", marginBottom: 32, maxWidth: 300 }}>Ahora envianos el mensaje por WhatsApp para confirmarlo y empezamos a prepararlo.</div>
           <a href={confirmado?.waUrl} target="_blank" rel="noreferrer"
@@ -657,7 +789,7 @@ export default function PaginaCliente() {
         <div style={{ padding: "16px 0 100px" }}>
 
           {/* Título sección */}
-          <div style={{ fontWeight: 800, fontSize: 18, color: "#1a1a1a", padding: "0 16px", marginBottom: 8 }}>
+          <div style={{ fontWeight: 800, fontSize: 18, color: GD, padding: "0 16px", marginBottom: 8 }}>
             {CATS.find(c => c.key === cat)?.label}
           </div>
 
@@ -667,22 +799,22 @@ export default function PaginaCliente() {
             const enCarrito = carrito.filter(i => i.tipo === "burger" && i.nombre === b.nombre).length;
             return (
               <div key={b.id}>
-                <div onClick={() => setModal(b)} style={{ display: "flex", background: "#fff", cursor: "pointer", padding: "14px 16px", gap: 14, alignItems: "center" }}>
+                <div onClick={() => setModal(b)} style={{ display: "flex", background: "#FDFAF5", cursor: "pointer", padding: "14px 16px", gap: 14, alignItems: "center" }}>
                   {/* Imagen */}
-                  <div style={{ width: 115, height: 115, borderRadius: 14, overflow: "hidden", background: "#f0f4f2", flexShrink: 0 }}>
+                  <div style={{ width: 115, height: 115, borderRadius: 14, overflow: "hidden", background: GL, flexShrink: 0 }}>
                     {foto ? <img src={foto} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}>🍔</div>}
                   </div>
                   {/* Info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
-                      <span style={{ fontWeight: 800, fontSize: 15, color: "#1a1a1a" }}>{b.nombre}</span>
-                      {b.tag && <span style={{ background: b.tag === "NUEVA" ? G : "#8b2e10", color: "#fff", fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4 }}>{b.tag}</span>}
+                      <span style={{ fontWeight: 900, fontSize: 16, color: GD, fontFamily: HEAD, letterSpacing: 0.5 }}>{b.nombre}</span>
+                      {b.tag && <span style={{ background: b.tag === "NUEVA" ? G : BR, color: "#fff", fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4 }}>{b.tag}</span>}
                       {enCarrito > 0 && <span style={{ background: G, color: "#fff", fontSize: 10, fontWeight: 900, padding: "2px 8px", borderRadius: 10 }}>×{enCarrito}</span>}
                     </div>
                     {/* Botón + precio */}
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
                       <div style={{ width: 32, height: 32, borderRadius: "50%", background: GD, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 22, fontWeight: 900, lineHeight: 1, flexShrink: 0 }}>+</div>
-                      <span style={{ fontWeight: 900, fontSize: 17, color: "#1a1a1a" }}>{fmt(b.simple)}</span>
+                      <span style={{ fontWeight: 900, fontSize: 17, color: GD }}>{fmt(b.simple)}</span>
                     </div>
                     {/* Descripción */}
                     <div style={{ fontSize: 12, color: "#aaa", lineHeight: 1.4, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{b.desc}</div>
@@ -700,24 +832,24 @@ export default function PaginaCliente() {
                 const foto = fG[g.id]; const qty = cantSueltas[g.id] || 0;
                 return (
                   <div key={g.id}>
-                    <div style={{ display: "flex", background: "#fff", padding: "14px 16px", gap: 14, alignItems: "center" }}>
-                      <div style={{ width: 115, height: 100, borderRadius: 14, overflow: "hidden", background: "#f0f4f2", flexShrink: 0 }}>
+                    <div style={{ display: "flex", background: "#FDFAF5", padding: "14px 16px", gap: 14, alignItems: "center" }}>
+                      <div style={{ width: 115, height: 100, borderRadius: 14, overflow: "hidden", background: GL, flexShrink: 0 }}>
                         {foto ? <img src={foto} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36 }}>🍟</div>}
                       </div>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 800, fontSize: 15, color: "#1a1a1a", marginBottom: 3 }}>{g.nombre}</div>
+                        <div style={{ fontWeight: 800, fontSize: 15, color: GD, marginBottom: 3 }}>{g.nombre}</div>
                         <div style={{ fontSize: 12, color: "#aaa", marginBottom: 8 }}>{g.detalle}</div>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           {qty > 0 ? (
                             <>
-                              <button onClick={() => cambiarCant(g.id, -1)} style={{ width: 32, height: 32, borderRadius: "50%", border: `2px solid ${G}`, background: "#fff", color: G, fontWeight: 900, fontSize: 18, cursor: "pointer" }}>−</button>
+                              <button onClick={() => cambiarCant(g.id, -1)} style={{ width: 32, height: 32, borderRadius: "50%", border: `2px solid ${G}`, background: "#FDFAF5", color: G, fontWeight: 900, fontSize: 18, cursor: "pointer" }}>−</button>
                               <span style={{ fontWeight: 800, color: GD, minWidth: 20, textAlign: "center" }}>{qty}</span>
                               <button onClick={() => cambiarCant(g.id, 1)} style={{ width: 32, height: 32, borderRadius: "50%", background: GD, border: "none", color: "#fff", fontWeight: 900, fontSize: 18, cursor: "pointer" }}>+</button>
                             </>
                           ) : (
                             <>
                               <button onClick={() => cambiarCant(g.id, 1)} style={{ width: 32, height: 32, borderRadius: "50%", background: GD, border: "none", color: "#fff", fontSize: 22, fontWeight: 900, cursor: "pointer" }}>+</button>
-                              <span style={{ fontWeight: 900, fontSize: 17, color: "#1a1a1a" }}>{fmt(g.precio)}</span>
+                              <span style={{ fontWeight: 900, fontSize: 17, color: GD }}>{fmt(g.precio)}</span>
                             </>
                           )}
                           {qty > 0 && <span style={{ fontWeight: 900, fontSize: 15, color: G, marginLeft: 4 }}>{fmt(g.precio)}</span>}
@@ -745,24 +877,24 @@ export default function PaginaCliente() {
                 const foto = fBe[b.id]; const qty = cantSueltas[b.id] || 0;
                 return (
                   <div key={b.id}>
-                    <div style={{ display: "flex", background: "#fff", padding: "14px 16px", gap: 14, alignItems: "center" }}>
-                      <div style={{ width: 115, height: 100, borderRadius: 14, overflow: "hidden", background: "#f0f4f2", flexShrink: 0 }}>
+                    <div style={{ display: "flex", background: "#FDFAF5", padding: "14px 16px", gap: 14, alignItems: "center" }}>
+                      <div style={{ width: 115, height: 100, borderRadius: 14, overflow: "hidden", background: GL, flexShrink: 0 }}>
                         {foto ? <img src={foto} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36 }}>🥤</div>}
                       </div>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 800, fontSize: 15, color: "#1a1a1a", marginBottom: 3 }}>{b.nombre}</div>
+                        <div style={{ fontWeight: 800, fontSize: 15, color: GD, marginBottom: 3 }}>{b.nombre}</div>
                         <div style={{ fontSize: 12, color: "#aaa", marginBottom: 8 }}>{b.detalle}</div>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           {qty > 0 ? (
                             <>
-                              <button onClick={() => cambiarCant(b.id, -1)} style={{ width: 32, height: 32, borderRadius: "50%", border: `2px solid ${G}`, background: "#fff", color: G, fontWeight: 900, fontSize: 18, cursor: "pointer" }}>−</button>
+                              <button onClick={() => cambiarCant(b.id, -1)} style={{ width: 32, height: 32, borderRadius: "50%", border: `2px solid ${G}`, background: "#FDFAF5", color: G, fontWeight: 900, fontSize: 18, cursor: "pointer" }}>−</button>
                               <span style={{ fontWeight: 800, color: GD, minWidth: 20, textAlign: "center" }}>{qty}</span>
                               <button onClick={() => cambiarCant(b.id, 1)} style={{ width: 32, height: 32, borderRadius: "50%", background: GD, border: "none", color: "#fff", fontWeight: 900, fontSize: 18, cursor: "pointer" }}>+</button>
                             </>
                           ) : (
                             <>
                               <button onClick={() => cambiarCant(b.id, 1)} style={{ width: 32, height: 32, borderRadius: "50%", background: GD, border: "none", color: "#fff", fontSize: 22, fontWeight: 900, cursor: "pointer" }}>+</button>
-                              <span style={{ fontWeight: 900, fontSize: 17, color: "#1a1a1a" }}>{fmt(b.precio)}</span>
+                              <span style={{ fontWeight: 900, fontSize: 17, color: GD }}>{fmt(b.precio)}</span>
                             </>
                           )}
                           {qty > 0 && <span style={{ fontWeight: 900, fontSize: 15, color: G, marginLeft: 4 }}>{fmt(b.precio)}</span>}
@@ -787,7 +919,7 @@ export default function PaginaCliente() {
 
       {/* ── BARRA INFERIOR ── */}
       {pantalla === "menu" && totalItems > 0 && (
-        <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, background: "#fff", borderTop: "1px solid #eee", padding: "12px 16px" }}>
+        <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, background: "#FDFAF5", borderTop: "1px solid #d8d2c8", padding: "12px 16px" }}>
           <button onClick={() => setPant("checkout")} style={{ width: "100%", background: GD, border: "none", borderRadius: 16, padding: "16px 20px", fontWeight: 900, fontSize: 16, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span style={{ background: G, borderRadius: 8, padding: "4px 10px", fontSize: 14 }}>{totalItems}</span>
             <span>Ver pedido</span>
@@ -798,7 +930,7 @@ export default function PaginaCliente() {
 
       {/* Modal */}
       {modal && (
-        <ModalBurger burger={modal} fotoUrl={getBurgerImg(modal.nombre)} extras={menu.extras} acompList={menu.acomp || []} fotoExtras={fE} onAgregar={agregar} onCerrar={() => setModal(null)} />
+        <ModalBurger burger={modal} fotoUrl={getBurgerImg(modal.nombre)} extras={menu.extras} acompList={menu.acomp || []} fotoExtras={fE} medallones={menu.medallones || MEDALLONES_DEFAULT} onAgregar={agregar} onCerrar={() => setModal(null)} />
       )}
     </div>
   );

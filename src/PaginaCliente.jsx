@@ -565,37 +565,8 @@ export default function PaginaCliente() {
     const hayDescuentoFds = carrito.some(i => descuentoFdsItem(i, pago) > 0);
     const subtotal = carrito.reduce((s, i) => s + precioItem(i), 0);
     const totalFinal = subtotal + (costoEnvio || 0);
-    const lineas = [`🍔 *NUEVO PEDIDO - Roses Burgers*`, ""];
-    if (descuentoHoy) lineas.push("🎉 *20% OFF DE HOY - TODOS LOS MEDIOS DE PAGO*", "");
-    else if (promoActiva) lineas.push("🔥 *PROMO EFECTIVO LUN-JUE*", "");
-    else if (hayDescuentoFds) lineas.push(`🏷️ *DESCUENTO FIN DE SEMANA CHEESEBURGER (${pago})*`, "");
-    lineas.push("📋 *DETALLE:*");
-    carrito.forEach(item => {
-      const precio = precioItem(item);
-      const descFds = descuentoFdsItem(item, pago);
-      if (item.tipo === "burger") {
-        const esPromo = descuentoHoy || (promoActiva && itemCalificaPromo(item));
-        const sufijo = esPromo ? (descuentoHoy ? " 🎉-20%" : " 🔥PROMO") : descFds > 0 ? ` 🏷️-${Math.round(descuentoFdsPct(pago) * 100)}%` : "";
-        lineas.push(`• 🍔 ${item.nombre} (${item.tamano}) — ${fmt(precio)}${sufijo}`);
-        lineas.push(`   ↳ Medallón: ${item.medallon === "vegetariano" ? "🥦 Vegetariano" : "🥩 Carne"}`);
-        if (item.acomp) lineas.push(`   ↳ + ${item.acomp.nombre}`);
-        if (item.extras?.length) lineas.push(`   ↳ Extras: ${item.extras.map(e => e.nombre).join(", ")}`);
-        if (item.aclaracion) lineas.push(`   ↳ Aclaración: ${item.aclaracion}`);
-      } else { lineas.push(`• ${item.tipo === "guar" ? "🍟" : "🥤"} ${item.nombre} — ${fmt(precio)}`); }
-    });
-    lineas.push("", `👤 *Cliente:* ${nombre}`);
-    lineas.push(`📱 *Teléfono:* ${telefono}`);
-    lineas.push(`📦 *Tipo:* ${t === "delivery" ? "🛵 Delivery" : "🏠 Retiro en local"}`);
-    if (t === "delivery") {
-      lineas.push(`📍 *Dirección:* ${dir}`);
-      lineas.push(`🏙️ *Localidad:* ${localidadNombre} — costo envío: ${fmt(costoEnvio)}`);
-    }
-    lineas.push(`💳 *Pago:* ${pago}`);
-    if (notas?.trim()) lineas.push(`📝 *Notas:* ${notas.trim()}`);
-    lineas.push("", `💰 *TOTAL: ${fmt(totalFinal)}*`);
-    const waUrl = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(lineas.join("\n"))}`;
 
-    // Guardar en Firebase PRIMERO (con reintentos), luego abrir WhatsApp
+    // Guardar en Firebase PRIMERO (con reintentos) para tener el número de pedido antes de armar el mensaje
     const orderData = {
       cliente: nombre,
       telefono: telefono || "",
@@ -625,6 +596,37 @@ export default function PaginaCliente() {
         if (intento < 3) await new Promise(r => setTimeout(r, 2000));
       }
     }
+
+    const lineas = [`🍔 *NUEVO PEDIDO - Roses Burgers*`, ""];
+    if (guardado && numeroPedido) lineas.push(`🔢 *PEDIDO #${numeroPedido}*`, "");
+    if (descuentoHoy) lineas.push("🎉 *20% OFF DE HOY - TODOS LOS MEDIOS DE PAGO*", "");
+    else if (promoActiva) lineas.push("🔥 *PROMO EFECTIVO LUN-JUE*", "");
+    else if (hayDescuentoFds) lineas.push(`🏷️ *DESCUENTO FIN DE SEMANA CHEESEBURGER (${pago})*`, "");
+    lineas.push("📋 *DETALLE:*");
+    carrito.forEach(item => {
+      const precio = precioItem(item);
+      const descFds = descuentoFdsItem(item, pago);
+      if (item.tipo === "burger") {
+        const esPromo = descuentoHoy || (promoActiva && itemCalificaPromo(item));
+        const sufijo = esPromo ? (descuentoHoy ? " 🎉-20%" : " 🔥PROMO") : descFds > 0 ? ` 🏷️-${Math.round(descuentoFdsPct(pago) * 100)}%` : "";
+        lineas.push(`• 🍔 ${item.nombre} (${item.tamano}) — ${fmt(precio)}${sufijo}`);
+        lineas.push(`   ↳ Medallón: ${item.medallon === "vegetariano" ? "🥦 Vegetariano" : "🥩 Carne"}`);
+        if (item.acomp) lineas.push(`   ↳ + ${item.acomp.nombre}`);
+        if (item.extras?.length) lineas.push(`   ↳ Extras: ${item.extras.map(e => e.nombre).join(", ")}`);
+        if (item.aclaracion) lineas.push(`   ↳ Aclaración: ${item.aclaracion}`);
+      } else { lineas.push(`• ${item.tipo === "guar" ? "🍟" : "🥤"} ${item.nombre} — ${fmt(precio)}`); }
+    });
+    lineas.push("", `👤 *Cliente:* ${nombre}`);
+    lineas.push(`📱 *Teléfono:* ${telefono}`);
+    lineas.push(`📦 *Tipo:* ${t === "delivery" ? "🛵 Delivery" : "🏠 Retiro en local"}`);
+    if (t === "delivery") {
+      lineas.push(`📍 *Dirección:* ${dir}`);
+      lineas.push(`🏙️ *Localidad:* ${localidadNombre} — costo envío: ${fmt(costoEnvio)}`);
+    }
+    lineas.push(`💳 *Pago:* ${pago}`);
+    if (notas?.trim()) lineas.push(`📝 *Notas:* ${notas.trim()}`);
+    lineas.push("", `💰 *TOTAL: ${fmt(totalFinal)}*`);
+    const waUrl = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(lineas.join("\n"))}`;
 
     if (!guardado) {
       const err = new Error("Firebase caído");

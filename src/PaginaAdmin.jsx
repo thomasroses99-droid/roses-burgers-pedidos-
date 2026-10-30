@@ -12,7 +12,10 @@ import {
 import { imprimirPedido, qzDisponible } from "./imprimir.js";
 
 // Hash SHA-256 de la contraseña — la contraseña real no está en el código fuente
-const ADMIN_PASS_HASH = "f183476c5c8c221c30653b6e175597793a1924321e679672af62314516efc463";
+// Zona Sur (roses-zona-sur-pedidos) tiene su propia contraseña; el resto usa la original
+const ADMIN_PASS_HASH = window.location.hostname.includes("zona-sur")
+  ? "f183476c5c8c221c30653b6e175597793a1924321e679672af62314516efc463"
+  : "1c9c66d9076f00934f4fa3f835ae860ca50b735798bf29300c39593f75013272";
 const LS_SESSION = "rb-admin-session";
 
 async function hashStr(str) {
